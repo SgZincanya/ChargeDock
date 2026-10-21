@@ -22,6 +22,7 @@ import asus_control
 from core import (AlertPolicy, MODELS, Reading, atomic_json, load_config,
                    read_all, read_poll_file, user_data_dir)
 from icons import ROOT, app_icon, symbol
+from i18n import LANGUAGES, set_language, tr, translate_message
 
 
 PALETTES = {
@@ -43,8 +44,21 @@ def system_theme() -> str:
         return "light"
 
 
+class TranslatedLabel(QLabel):
+    def __init__(self, text=""):
+        self.source_text = text
+        super().__init__(translate_message(text))
+
+    def setText(self, text):
+        self.source_text = text
+        super().setText(translate_message(text))
+
+    def retranslate(self):
+        super().setText(translate_message(self.source_text))
+
+
 def label(text="", role="body"):
-    value = QLabel(text)
+    value = TranslatedLabel(text)
     value.setProperty("role", role)
     return value
 
@@ -52,8 +66,9 @@ def label(text="", role="body"):
 class Switch(QCheckBox):
     def __init__(self, text, checked=False):
         super().__init__()
-        self.setAccessibleName(text)
-        self.setToolTip(text)
+        self.source_text = text
+        self.setAccessibleName(tr(text))
+        self.setToolTip(tr(text))
         self.setChecked(checked)
         self.setFixedSize(44, 32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -100,7 +115,7 @@ class MenuChoice(QPushButton):
         row = QHBoxLayout(self)
         row.setContentsMargins(11, 3, 9, 3)
         row.setSpacing(12)
-        self.caption = QLabel()
+        self.caption = TranslatedLabel()
         self.indicator = QLabel()
         self.indicator.setFixedSize(13, 16)
         for child in (self.caption, self.indicator):
@@ -111,7 +126,7 @@ class MenuChoice(QPushButton):
 
     def addItem(self, text, data):
         self.items.append((text, data))
-        action = self.choice_menu.addAction(text)
+        action = self.choice_menu.addAction(tr(text))
         action.setCheckable(True)
         index = len(self.items) - 1
         action.triggered.connect(lambda checked=False, i=index: self.setCurrentIndex(i))
@@ -129,10 +144,17 @@ class MenuChoice(QPushButton):
             return
         self.index = index
         self.caption.setText(self.items[index][0])
-        self.setAccessibleDescription(self.items[index][0])
+        self.setAccessibleDescription(tr(self.items[index][0]))
         for i, action in enumerate(self.choice_menu.actions()):
             action.setChecked(i == index)
         self.currentIndexChanged.emit(index)
+
+    def retranslate(self):
+        for (text, _), action in zip(self.items, self.choice_menu.actions()):
+            action.setText(tr(text))
+        if self.index >= 0:
+            self.caption.setText(self.items[self.index][0])
+            self.setAccessibleDescription(tr(self.items[self.index][0]))
 
     def open_menu(self):
         self.choice_menu.setMinimumWidth(self.width())
@@ -199,6 +221,7 @@ class DeviceCard(QFrame):
 
     def render(self, reading, config, stale=False):
         self.reading = reading
+        self.title.setText(reading.title)
         c = self.colors
         self.glyph.setPixmap(symbol(self.key, c["text"], 29).pixmap(QSize(29, 29)))
         level = reading.level
@@ -217,9 +240,9 @@ class DeviceCard(QFrame):
                  "正在读取" if not reading.error else "等待唤醒" if waiting else "未连接")
         self.state_text.setText(state)
         self.state_text.setStyleSheet(f"color:{color if low else c['muted']};")
-        self.setToolTip(reading.error or ("耳机按 0–8 档换算，显示近似电量；耳机不发送低电量提醒。"
-                                        if reading.approximate else ""))
-        self.setAccessibleName(f"{reading.title} {self.percentage.text()} {state}")
+        self.setToolTip(translate_message(reading.error) if reading.error else tr(
+            "耳机按 0–8 档换算，显示近似电量；耳机不发送低电量提醒。") if reading.approximate else "")
+        self.setAccessibleName(f"{tr(reading.title)} {self.percentage.text()} {tr(state)}")
 
 
 class Poller(QObject):
@@ -297,7 +320,7 @@ class Panel(QWidget):
                          | Qt.WindowType.WindowStaysOnTopHint)
         self.controller = controller
         QApplication.instance().installEventFilter(self)
-        self.setWindowTitle("电量岛 · ChargeDock")
+        self.setWindowTitle(tr("电量岛 · ChargeDock"))
         self.setWindowIcon(app_icon())
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(432)
@@ -380,6 +403,7 @@ class Panel(QWidget):
         button.setIconSize(QSize(20, 20))
         button.setAccessibleName(text)
         button.setToolTip(text)
+        button.setProperty("sourceTip", text)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(callback)
         self.icon_buttons.append((button, name))
@@ -407,6 +431,7 @@ class Panel(QWidget):
         for key, title in (("mouse", "鼠标"), ("keyboard", "键盘")):
             row = QHBoxLayout()
             caption = label(title)
+            caption.setWordWrap(True)
             row.addWidget(caption, 1)
             spin = QSpinBox()
             spin.setRange(1, 99)
@@ -414,10 +439,12 @@ class Panel(QWidget):
             spin.setSuffix(" %")
             spin.setValue(self.controller.config["alerts"][key]["threshold"])
             spin.setAccessibleName(f"{title}低电量提醒阈值")
+            spin.setProperty("sourceTip", f"{title}低电量提醒阈值")
             spin.setFixedWidth(84)
             spin.setMinimumHeight(32)
             spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
             spin.setToolTip("输入 1–99%，或用上下箭头调整")
+            spin.setProperty("sourceHelp", "输入 1–99%，或用上下箭头调整")
             row.addWidget(spin)
             switch = Switch(f"{title}低电量提醒", self.controller.config["alerts"][key]["enabled"])
             switch.bind_label(caption)
@@ -439,18 +466,33 @@ class Panel(QWidget):
             row.addWidget(label(title), 1)
             combo = MenuChoice()
             combo.setAccessibleName(title)
+            combo.setProperty("sourceTip", title)
             combo.setMinimumHeight(32)
-            combo.setMinimumWidth(105)
+            combo.setMinimumWidth(140)
             for text, value in choices:
                 combo.addItem(text, value)
             combo.setCurrentIndex(combo.findData(self.controller.config[name]))
             combo.currentIndexChanged.connect(lambda _, c=combo, n=name: self.controller.setting(n, c.currentData()))
             row.addWidget(combo)
             layout.addLayout(row)
+        language_row = QHBoxLayout()
+        language_row.addWidget(label("语言"), 1)
+        self.language_choice = MenuChoice()
+        self.language_choice.setProperty("sourceTip", "语言")
+        self.language_choice.setMinimumHeight(32)
+        self.language_choice.setMinimumWidth(155)
+        for code, title in LANGUAGES.items():
+            self.language_choice.addItem(title, code)
+        self.language_choice.setCurrentIndex(self.language_choice.findData(self.controller.config["language"]))
+        self.language_choice.currentIndexChanged.connect(
+            lambda _: self.controller.setting("language", self.language_choice.currentData()))
+        language_row.addWidget(self.language_choice)
+        layout.addLayout(language_row)
         for title, name, checked in (("提醒时播放提示音", "sound", self.controller.config["sound"]),
                                       ("登录时自动启动", "startup", asus_control.startup_enabled())):
             row = QHBoxLayout()
             caption = label(title)
+            caption.setWordWrap(True)
             row.addWidget(caption, 1)
             switch = Switch(title, checked)
             switch.bind_label(caption)
@@ -473,6 +515,8 @@ class Panel(QWidget):
         buttons = QHBoxLayout()
         self.asus_disable = QPushButton("关闭显示")
         self.asus_enable = QPushButton("打开显示")
+        self.asus_disable.setProperty("sourceText", "关闭显示")
+        self.asus_enable.setProperty("sourceText", "打开显示")
         for button in (self.asus_disable, self.asus_enable):
             button.setMinimumHeight(34)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -486,6 +530,27 @@ class Panel(QWidget):
         self.settings_status.setWordWrap(True)
         layout.addWidget(self.settings_status)
         layout.addStretch()
+
+    def retranslate(self):
+        self.setWindowTitle(tr("电量岛 · ChargeDock"))
+        for widget in self.findChildren(QWidget):
+            if isinstance(widget, TranslatedLabel):
+                widget.retranslate()
+            if isinstance(widget, MenuChoice):
+                widget.retranslate()
+            if isinstance(widget, Switch):
+                widget.setAccessibleName(tr(widget.source_text))
+                widget.setToolTip(tr(widget.source_text))
+            if widget.property("sourceText"):
+                widget.setText(tr(widget.property("sourceText")))
+            if widget.property("sourceTip"):
+                widget.setAccessibleName(tr(widget.property("sourceTip")))
+                if isinstance(widget, QPushButton) and not isinstance(widget, MenuChoice):
+                    widget.setToolTip(tr(widget.property("sourceTip")))
+            if widget.property("sourceHelp"):
+                widget.setToolTip(tr(widget.property("sourceHelp")))
+        self.update_asus_state()
+        self.resize_to_content()
 
     def apply_theme(self, theme=None):
         self.colors = PALETTES[theme or system_theme()]
@@ -621,25 +686,30 @@ class Controller(QObject):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.config_path = self.data_dir / "settings.json"
         self.config = load_config(self.config_path)
+        set_language(self.config["language"])
+        self.app.setApplicationDisplayName(tr("电量岛"))
         self.policy = AlertPolicy()
         self.readings = {key: Reading(key, *value) for key, value in MODELS.items()}
         self.stale = False
         self.last_updated = 0
+        self.last_error = ""
         self.admin_result = None
         self.admin_started = 0
         self.tray = QSystemTrayIcon(app_icon(), self)
         self.panel = Panel(self)
         self.panel.apply_theme(args.snapshot_theme if args.snapshot else None)
-        self.tray.setToolTip("电量岛 · 正在读取设备")
+        self.panel.retranslate()
+        self.tray.setToolTip(tr("电量岛 · 正在读取设备"))
         self.tray.activated.connect(self.activated)
         self.tray.messageClicked.connect(lambda: self.panel.reveal())
         self.menu = QMenu()
-        self.menu.addAction("显示电量", lambda: self.panel.reveal())
-        self.menu.addAction("偏好设置", lambda: self.panel.reveal(settings=True))
-        self.menu.addAction("立即刷新", self.refresh)
-        self.menu.addAction("暂停提醒 30 分钟", self.snooze)
+        self.menu_actions = []
+        for source, callback in (("显示电量", lambda: self.panel.reveal()),
+                ("偏好设置", lambda: self.panel.reveal(settings=True)),
+                ("立即刷新", self.refresh), ("暂停提醒 30 分钟", self.snooze)):
+            self.menu_actions.append((self.menu.addAction(tr(source), callback), source))
         self.menu.addSeparator()
-        self.menu.addAction("退出电量岛", app.quit)
+        self.menu_actions.append((self.menu.addAction(tr("退出电量岛"), app.quit), "退出电量岛"))
         self.tray.setContextMenu(self.menu)
         self.poller = Poller(self.data_dir)
         self.poller.completed.connect(self.receive)
@@ -722,8 +792,8 @@ class Controller(QObject):
             self.last_updated = time.time()
             warnings = self.policy.evaluate(readings, self.config)
             if warnings and not self.args.snapshot:
-                message = "；".join(f"{r.title}剩余 {r.level}%" for r in warnings)
-                self.tray.showMessage("设备电量偏低", message + "，可以准备充电了。",
+                message = "\n".join(tr("{device}剩余 {level}%", device=tr(r.title), level=r.level) for r in warnings)
+                self.tray.showMessage(tr("设备电量偏低"), message + tr("，可以准备充电了。"),
                                       QSystemTrayIcon.MessageIcon.Warning, 7000)
                 if self.config["sound"]:
                     import winsound
@@ -735,22 +805,7 @@ class Controller(QObject):
                     self.headset_retry.start()
             else:
                 self.headset_retry.stop()
-        for key, card in self.panel.cards.items():
-            card.render(self.readings[key], self.config, self.stale)
-        self.panel.updated_label.setText("上次更新 " + time.strftime("%H:%M", time.localtime(self.last_updated))
-                                        if self.last_updated else "尚未读取到电量")
-        self.panel.notice.setText(error or ("提醒已暂停 30 分钟" if time.time() < self.policy.snoozed_until else ""))
-        self.panel.notice.setVisible(bool(self.panel.notice.text()))
-        self.panel.resize_to_content()
-        tooltip = ["电量岛 · ChargeDock"]
-        low = False
-        for r in self.readings.values():
-            tooltip.append(f"{r.title}：" + (("约 " if r.approximate else "") + f"{r.level}%" if r.level is not None else "未连接"))
-            if r.key in ("mouse", "keyboard") and r.level is not None:
-                item = self.config["alerts"][r.key]
-                low |= item["enabled"] and r.level <= item["threshold"] and not r.charging
-        self.tray.setToolTip("\n".join(tooltip))
-        self.tray.setIcon(symbol("tray", self.panel.colors["warning"] if low else self.panel.colors["accent"], 32))
+        self.update_presentation(error)
         if self.args.smoke_test:
             import ctypes
             user32 = ctypes.WinDLL("user32")
@@ -762,6 +817,25 @@ class Controller(QObject):
                         "wake_registered": bool(self.wake_monitor and self.wake_monitor.registration_ok),
                         "tool_window": bool(ex_style & 0x80), "app_window": bool(ex_style & 0x40000)})
             QTimer.singleShot(200, self.app.quit)
+
+    def update_presentation(self, error=""):
+        self.last_error = error
+        for key, card in self.panel.cards.items():
+            card.render(self.readings[key], self.config, self.stale)
+        self.panel.updated_label.setText("上次更新 " + time.strftime("%H:%M", time.localtime(self.last_updated))
+                                        if self.last_updated else "尚未读取到电量")
+        self.panel.notice.setText(error or ("提醒已暂停 30 分钟" if time.time() < self.policy.snoozed_until else ""))
+        self.panel.notice.setVisible(bool(self.panel.notice.text()))
+        self.panel.resize_to_content()
+        tooltip = [tr("电量岛 · ChargeDock")]
+        low = False
+        for r in self.readings.values():
+            tooltip.append(f"{tr(r.title)}: " + ((tr("约 ") if r.approximate else "") + f"{r.level}%" if r.level is not None else tr("未连接")))
+            if r.key in ("mouse", "keyboard") and r.level is not None:
+                item = self.config["alerts"][r.key]
+                low |= item["enabled"] and r.level <= item["threshold"] and not r.charging
+        self.tray.setToolTip("\n".join(tooltip))
+        self.tray.setIcon(symbol("tray", self.panel.colors["warning"] if low else self.panel.colors["accent"], 32))
 
     def save(self):
         try:
@@ -777,6 +851,22 @@ class Controller(QObject):
             card.render(self.readings[k], self.config, self.stale)
 
     def setting(self, name, value):
+        if name == "language":
+            if value not in LANGUAGES:
+                return
+            self.config[name] = value
+            set_language(value)
+            self.app.setApplicationDisplayName(tr("电量岛"))
+            choice = self.panel.language_choice
+            choice.blockSignals(True)
+            choice.setCurrentIndex(choice.findData(value))
+            choice.blockSignals(False)
+            self.save()
+            self.panel.retranslate()
+            for action, source in self.menu_actions:
+                action.setText(tr(source))
+            self.update_presentation(self.last_error)
+            return
         if name == "startup":
             try:
                 asus_control.set_startup(value)

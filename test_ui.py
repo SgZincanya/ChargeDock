@@ -29,6 +29,7 @@ class UiTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent)
         self.addCleanup(self.folder.cleanup)
+        (Path(self.folder.name) / "settings.json").write_text('{"language":"zh-CN"}', encoding="utf-8")
         self.server = QLocalServer()
         self.server.listen("ChargeDock-test-" + uuid.uuid4().hex)
         args = SimpleNamespace(data_dir=Path(self.folder.name), snapshot=Path("test"),

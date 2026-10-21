@@ -4,6 +4,7 @@ __pycache__/
 venv/
 build/
 dist/
+dev-data/
 .env
 *.log
 settings.json

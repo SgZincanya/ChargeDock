@@ -10,7 +10,7 @@ runtime_names = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
                  "msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_codecvt_ids.dll", "concrt140.dll")
 runtime = [(str(qt / name), ".") for name in runtime_names if (qt / name).exists()]
 a = Analysis([str(root / "chargedock.py")], pathex=[str(root)], binaries=runtime,
-             datas=[(str(root / "assets"), "assets")], hiddenimports=[],
+             datas=[(str(root / "assets"), "assets"), (str(root / "locales"), "locales")], hiddenimports=[],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
              excludes=["PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "tkinter"],
              noarchive=False, optimize=0)

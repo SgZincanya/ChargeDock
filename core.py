@@ -35,7 +35,7 @@ def atomic_json(path: Path, value) -> None:
 
 
 def defaults() -> dict:
-    return {"interval": 60, "dismiss_seconds": 12, "sound": False,
+    return {"interval": 60, "dismiss_seconds": 12, "sound": False, "language": "system",
             "alerts": {"mouse": {"enabled": True, "threshold": 20},
                        "keyboard": {"enabled": True, "threshold": 20}}}
 
@@ -44,6 +44,9 @@ def validate_config(value) -> dict:
     result = defaults()
     if not isinstance(value, dict):
         return result
+    from i18n import LANGUAGES
+    if isinstance(value.get("language"), str) and value["language"] in LANGUAGES:
+        result["language"] = value["language"]
     if value.get("interval") in (30, 60, 120, 300):
         result["interval"] = value["interval"]
     if value.get("dismiss_seconds") in (8, 12, 20, 30):
