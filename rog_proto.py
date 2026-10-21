@@ -118,12 +118,12 @@ def read_interface(iface: hw.HidInterface, timeout: float = 0.65) -> Optional[Ro
     return result
 
 
-def read_device(kind: str) -> RogReading:
+def read_device(kind: str, interfaces=None) -> RogReading:
     if kind not in ("mouse", "keyboard"):
         raise ValueError("未知设备类型")
     title = "ROG 魔刃 X" if kind == "mouse" else "ROG 夜魔"
     last = RogReading(title, error="未找到支持的接收器/USB 接口，请检查连接（不支持蓝牙）")
-    for iface in hw.enumerate_hid():
+    for iface in hw.enumerate_hid() if interfaces is None else interfaces:
         spec = match_device(iface)
         if spec is not None and spec.kind == kind:
             reading = read_interface(iface)

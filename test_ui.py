@@ -192,6 +192,55 @@ class UiTests(unittest.TestCase):
         self.assertEqual(self.controller.readings["keyboard"].level, 50)
         self.assertEqual(self.controller.readings["headset"].level, 75)
 
+    def test_periodic_read_skips_device_in_backoff(self):
+        schedule = self.controller.retry_schedule
+        schedule.clock = lambda: 10
+        schedule.deadlines.update(mouse=0, keyboard=0, headset=300)
+        with patch.object(self.controller.poller, "start", return_value=True) as start:
+            self.controller.refresh_due()
+            start.assert_called_once_with(["mouse", "keyboard"])
+
+    def test_manual_refresh_bypasses_backoff(self):
+        schedule = self.controller.retry_schedule
+        schedule.record([], list(self.controller.readings), 60)
+        with patch.object(self.controller.poller, "start", return_value=True) as start:
+            self.controller.refresh()
+            start.assert_called_once_with(["mouse", "keyboard", "headset"])
+        self.assertEqual(schedule.failures["headset"], 0)
+
+    def test_mouse_wake_preserves_headset_backoff(self):
+        schedule = self.controller.retry_schedule
+        schedule.record([], ["headset"], 60)
+        deadline = schedule.deadlines["headset"]
+        self.controller.request_wake_refresh("mouse")
+        with patch.object(self.controller.poller, "start", return_value=True) as start:
+            self.controller.refresh_after_wake()
+            start.assert_called_once_with(["mouse"])
+        self.assertEqual(schedule.deadlines["headset"], deadline)
+
+    def test_partial_recovery_clears_only_its_stale_marker(self):
+        self.controller.receive([], "timeout")
+        self.controller.receive([Reading("mouse", "鼠标", "", 74)], "")
+        self.assertEqual(self.panel.cards["mouse"].state_text.text(), "已连接")
+        self.assertEqual(self.panel.cards["keyboard"].state_text.text(), "上次读取")
+        self.controller.receive([Reading("keyboard", "键盘", "", 50), Reading("headset", "耳机", "", 75)], "")
+        self.assertFalse(self.controller.stale)
+
+    def test_event_loop_keeps_ticking_while_worker_waits(self):
+        import sys
+        timer = QTimer()
+        beats = []
+        timer.timeout.connect(lambda: beats.append(1))
+        timer.start(10)
+        poller = Poller(Path(self.folder.name))
+        poller.process.start(sys.executable, ["-c", "import time; time.sleep(0.4)"])
+        self.assertTrue(poller.process.waitForStarted(1000))
+        QTest.qWait(250)
+        timer.stop()
+        self.assertGreaterEqual(len(beats), 5)
+        self.assertNotEqual(poller.process.state(), poller.process.ProcessState.NotRunning)
+        poller.stop()
+
     def test_dark_light_and_settings_navigation(self):
         for theme in ("dark", "light"):
             self.panel.apply_theme(theme)

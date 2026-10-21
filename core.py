@@ -114,10 +114,10 @@ def parse_headset(data: bytes) -> tuple[int | None, bool, str]:
     return int(code * 100 / 8 + 0.5), state == 2, ""
 
 
-def read_headset() -> Reading:
+def read_headset(interfaces=None) -> Reading:
     import hid_win as hw
     result = Reading("headset", *MODELS["headset"], approximate=True)
-    for iface in hw.enumerate_hid():
+    for iface in hw.enumerate_hid() if interfaces is None else interfaces:
         if not (iface.vid == 0x1038 and iface.pid in (0x12E0, 0x12E5)
                 and iface.usage_page == 0xFFC0 and iface.usage == 1
                 and iface.output_len == 64 and iface.input_len == 64):
@@ -147,13 +147,23 @@ def read_headset() -> Reading:
 
 def read_all(keys=None) -> list[Reading]:
     import rog_proto
+    import hid_win as hw
+    keys = list(MODELS) if keys is None else list(keys)
+    if any(key not in MODELS for key in keys) or len(set(keys)) != len(keys):
+        raise ValueError("Unknown or duplicate device keys")
+    if not keys:
+        return []
+    try:
+        interfaces = hw.enumerate_hid()
+    except Exception as exc:
+        return [Reading(key, *MODELS[key], error=f"暂时无法读取：{exc}") for key in keys]
     result = []
-    for key in (keys if keys is not None else MODELS):
+    for key in keys:
         try:
             if key == "headset":
-                reading = read_headset()
+                reading = read_headset(interfaces)
             else:
-                value = rog_proto.read_device(key)
+                value = rog_proto.read_device(key, interfaces)
                 reading = Reading(key, *MODELS[key], value.level, value.charging,
                                   error=value.error, updated=time.time())
         except Exception as exc:
@@ -163,7 +173,8 @@ def read_all(keys=None) -> list[Reading]:
 
 
 def poll_to_file(path: Path, key=None) -> int:
-    atomic_json(path, [asdict(r) for r in read_all([key] if key else None)])
+    keys = [key] if isinstance(key, str) else key
+    atomic_json(path, [asdict(r) for r in read_all(keys)])
     return 0
 
 

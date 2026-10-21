@@ -42,8 +42,8 @@ Windows 查到的名称可能只是接收器名称。VID/PID 能帮助识别接�
 1. `core.MODELS` 与 `read_all()`：注册类别并分派读取，返回统一的 `Reading`。
 2. `ui.DeviceCard.SUBTITLES` 与 `icons.PATHS`：提供副标题和设备图标；卡片由 `MODELS` 顺序生成。
 3. `core.read_poll_file()`：检查返回 key、顺序、数量和电量范围；局部读取仍需按 key 合并结果。
-4. 如需单设备读取，更新 `chargedock.py --poll-key` 的允许值以及 `ui.Poller` 的预期结果 key。目前局部读取只针对耳机。
-5. 如需唤醒刷新，更新 `wake_monitor.py` 的已知设备识别和通知过滤，避免让读取回复反过来触发无限刷新。必要时同步耳机专用重试分支。
+4. 更新 `chargedock.py --poll-key` 的允许值；该参数可重复，`ui.Poller` 会按本次查询的 key 列表检查结果。`polling.RetrySchedule` 依据 `MODELS` 注册每个设备的独立重试时间。
+5. 如需唤醒刷新，更新 `wake_monitor.py` 的已知设备识别和通知过滤，并向回调传递对应 key，避免让读取回复反过来触发无限刷新，或让一个设备的活动解除其他设备的退避。
 6. 如需提醒，更新下节列出的全部环节；为旧配置提供默认值，保留耳机默认不提醒的行为，除非用户明确要求改变。
 7. 添加四国语言设备名称和相关文案，以及协议、配置、提醒、交互测试。
 
@@ -59,6 +59,7 @@ Windows 查到的名称可能只是接收器名称。VID/PID 能帮助识别接�
 - `ui.Panel.build_settings()` 与 `Controller.alert_setting()`：用户可调整的控件和保存。
 - `ui.DeviceCard.render()`、`Controller.update_presentation()`：低电量颜色和托盘状态。目前都有鼠标/键盘类别限制。
 - `ui.Controller.receive()`：通知文案和声音。
+- `polling.RetrySchedule`：读取失败的独立退避与恢复，和提醒暂停不是同一项设置。
 - `test_core.py`、`test_ui.py`：边界、去重、充电、离线、保存及旧配置迁移。
 
 保持原则：未知电量不是 0%；离线或读取错误不触发低电量警报；切换语言不能触发新提醒或重复查询。通知模板使用 `tr()` 和具名占位符，不拼接中文句子。
@@ -90,6 +91,7 @@ Windows 64 位，Python 3.11，安装 `requirements.txt` 后：
 ```powershell
 python chargedock.py --data-dir .\dev-data
 python -m unittest discover -p "test_*.py"
+python -m pip install -r requirements-build.txt
 python -m PyInstaller --noconfirm ChargeDock.spec
 ```
 

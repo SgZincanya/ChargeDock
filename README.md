@@ -33,7 +33,8 @@
 - 鼠标、键盘闲置 20 秒后的首次活动，或已知离线设备的首次活动，会在约 0.65 秒后补读电量。
 - 只根据设备活动通知判断，不读取、保存或分析按键内容。连续操作不会不断刷新；重复通知会合并，正在读取时会等待完成再补读。
 - 设备重新连接、电脑从睡眠恢复时自动补读。打开窗口时，若距上次更新超过 10 秒，也会补读。
-- 耳机支持基站活动通知；耳机离线但基站仍存在时，每 5 秒只补查耳机，读到电量后恢复正常刷新间隔。
+- 设备读取失败后，只重试到期的设备，按 5、10、20、40、80、160 秒递增，之后最多每 300 秒重试。读取成功后恢复设置中的正常刷新间隔。
+- 鼠标、键盘或耳机的活动/重连通知只解除对应设备的退避；系统恢复和手动刷新立即查询全部设备。移动鼠标不会重置耳机的重试间隔。
 - 这里根据设备活动判断可能的唤醒，不能直接获知所有固件内部的睡眠状态。
 
 ## 低电量提醒
@@ -63,6 +64,8 @@
 
 只在本机读取设备，没有联网、遥测或上传。刷新间隔默认 60 秒，可调 30 秒、1 分钟、2 分钟、5 分钟。
 
+每轮 HID 接口只枚举一次并共享结果，下一轮重新枚举，避免跨轮路径缓存失效。不同设备的错误、重试时间和上次读取标记分别维护；协议通信仍保持串行。优化测量和打包范围见 [PERFORMANCE.md](PERFORMANCE.md)。
+
 设置保存在 `%LOCALAPPDATA%\ChargeDock\settings.json`。正常读取的中间文件在使用后清除。开机启动设置只在用户手动切换时更改。
 
 ## 源码与构建
@@ -73,7 +76,7 @@ Windows 64 位，Python 3.11：
 
 ```text
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements-build.txt
 .venv\Scripts\python -m unittest discover -p "test_*.py" -v
 .venv\Scripts\python -m PyInstaller --noconfirm ChargeDock.spec
 ```

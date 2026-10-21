@@ -108,13 +108,13 @@ class WakeMonitor(QAbstractNativeEventFilter):
                     current = self.readings().get(key)
                     missing = current is None or current.level is None
                     if self.gate.observe(key, missing, self.polling()):
-                        self.callback()
+                        self.callback(key)
             elif msg.message == 0xFE:  # WM_INPUT_DEVICE_CHANGE
                 key = self.lookup(msg.lParam)
                 if int(msg.wParam) == 2:
                     self.devices.pop(msg.lParam, None)
                 if key:
-                    self.callback()
+                    self.callback(key)
             elif msg.message == 0x218 and int(msg.wParam) in (7, 18):
                 self.gate.activity.clear()
                 self.callback()

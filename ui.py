@@ -23,6 +23,7 @@ from core import (AlertPolicy, MODELS, Reading, atomic_json, load_config,
                    read_all, read_poll_file, user_data_dir)
 from icons import ROOT, app_icon, symbol
 from i18n import LANGUAGES, set_language, tr, translate_message
+from polling import RetrySchedule
 
 
 PALETTES = {
@@ -260,18 +261,22 @@ class Poller(QObject):
         self.output = None
         self.timed_out = False
         self.active = False
-        self.requested_key = None
+        self.requested_keys = list(MODELS)
 
     def start(self, key=None):
         if self.active:
             return False
+        keys = list(MODELS) if key is None else [key] if isinstance(key, str) else list(key)
+        if not keys or any(k not in MODELS for k in keys) or len(set(keys)) != len(keys):
+            raise ValueError("Unknown or duplicate device keys")
         self.active = True
         self.timed_out = False
-        self.requested_key = key
+        self.requested_keys = keys
         self.output = self.data_dir / f"poll-{uuid.uuid4().hex}.json"
         args = ["--poll-output", str(self.output)]
-        if key:
-            args += ["--poll-key", key]
+        if keys != list(MODELS):
+            for selected in keys:
+                args += ["--poll-key", selected]
         if not getattr(sys, "frozen", False):
             args.insert(0, str(Path(__file__).with_name("chargedock.py")))
         self.process.start(sys.executable, args)
@@ -296,7 +301,7 @@ class Poller(QObject):
         try:
             if self.timed_out:
                 raise TimeoutError("设备响应超时，已停止本次读取；请唤醒设备后刷新")
-            readings = read_poll_file(self.output, [self.requested_key] if self.requested_key else None)
+            readings = read_poll_file(self.output, self.requested_keys)
             self.completed.emit(readings, "")
         except (OSError, ValueError, TypeError) as exc:
             self.completed.emit([], str(exc))
@@ -691,6 +696,7 @@ class Controller(QObject):
         self.policy = AlertPolicy()
         self.readings = {key: Reading(key, *value) for key, value in MODELS.items()}
         self.stale = False
+        self.stale_keys = set()
         self.last_updated = 0
         self.last_error = ""
         self.admin_result = None
@@ -714,15 +720,14 @@ class Controller(QObject):
         self.poller = Poller(self.data_dir)
         self.poller.completed.connect(self.receive)
         self.wake_timer = QTimer(self)
+        self.pending_wake_keys = set()
         self.wake_timer.setSingleShot(True)
         self.wake_timer.timeout.connect(self.refresh_after_wake)
-        self.headset_retry = QTimer(self)
-        self.headset_retry.setInterval(5000)
-        self.headset_retry.timeout.connect(self.retry_headset)
+        self.retry_schedule = RetrySchedule(MODELS)
         self.wake_monitor = None
         self.refresh_timer = QTimer(self)
-        self.refresh_timer.timeout.connect(self.refresh)
-        self.refresh_timer.start(self.config["interval"] * 1000)
+        self.refresh_timer.setSingleShot(True)
+        self.refresh_timer.timeout.connect(self.refresh_due)
         self.admin_timer = QTimer(self)
         self.admin_timer.timeout.connect(self.check_admin)
         self.app.aboutToQuit.connect(self.cleanup)
@@ -760,15 +765,40 @@ class Controller(QObject):
         socket.disconnectFromServer()
 
     def refresh(self):
+        if self.closing or self.poller.active:
+            return
+        self.retry_schedule.reset()
+        self.start_reading(list(MODELS))
+
+    def schedule_next(self):
+        if not self.closing and not self.args.snapshot:
+            self.refresh_timer.start(self.retry_schedule.delay_ms())
+
+    def refresh_due(self):
         if self.closing:
             return
-        if self.poller.start():
+        if self.poller.active:
+            self.refresh_timer.start(250)
+            return
+        keys = self.retry_schedule.due()
+        if keys:
+            self.start_reading(keys)
+        else:
+            self.schedule_next()
+
+    def start_reading(self, keys):
+        self.refresh_timer.stop()
+        if self.poller.start(keys):
             self.panel.refresh_button.setEnabled(False)
             self.panel.updated_label.setText("正在更新…")
 
-    def request_wake_refresh(self):
+    def request_wake_refresh(self, key=None):
         if self.closing:
             return
+        if key in MODELS:
+            self.pending_wake_keys.add(key)
+        else:
+            self.pending_wake_keys.update(MODELS)
         if not self.wake_timer.isActive():
             self.wake_timer.start(650)
 
@@ -776,17 +806,23 @@ class Controller(QObject):
         if self.poller.active:
             self.wake_timer.start(250)
         else:
-            self.refresh()
-
-    def retry_headset(self):
-        if not self.closing and not self.poller.active:
-            self.poller.start("headset")
+            keys = [k for k in MODELS if k in self.pending_wake_keys]
+            self.pending_wake_keys.clear()
+            if keys == list(MODELS) or not keys:
+                self.refresh()
+            else:
+                self.retry_schedule.reset(keys)
+                self.start_reading(keys)
 
     def receive(self, readings, error):
         if self.closing:
             return
         self.panel.refresh_button.setEnabled(True)
-        self.stale = bool(error) or (self.stale and len(readings) < len(MODELS))
+        if error:
+            self.stale_keys.update(self.poller.requested_keys)
+        for reading in readings:
+            self.stale_keys.discard(reading.key)
+        self.stale = bool(self.stale_keys)
         if readings:
             self.readings.update({r.key: r for r in readings})
             self.last_updated = time.time()
@@ -798,13 +834,9 @@ class Controller(QObject):
                 if self.config["sound"]:
                     import winsound
                     winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-            headset = self.readings["headset"]
-            if not self.args.snapshot and headset.level is None and (
-                    "未开机" in headset.error or "未回复" in headset.error):
-                if not self.headset_retry.isActive():
-                    self.headset_retry.start()
-            else:
-                self.headset_retry.stop()
+        attempted = [r.key for r in readings] if readings else self.poller.requested_keys
+        self.retry_schedule.record(readings, attempted, self.config["interval"])
+        self.schedule_next()
         self.update_presentation(error)
         if self.args.smoke_test:
             import ctypes
@@ -821,7 +853,7 @@ class Controller(QObject):
     def update_presentation(self, error=""):
         self.last_error = error
         for key, card in self.panel.cards.items():
-            card.render(self.readings[key], self.config, self.stale)
+            card.render(self.readings[key], self.config, key in self.stale_keys)
         self.panel.updated_label.setText("上次更新 " + time.strftime("%H:%M", time.localtime(self.last_updated))
                                         if self.last_updated else "尚未读取到电量")
         self.panel.notice.setText(error or ("提醒已暂停 30 分钟" if time.time() < self.policy.snoozed_until else ""))
@@ -848,7 +880,7 @@ class Controller(QObject):
         self.config["alerts"][key][name] = value
         self.save()
         for k, card in self.panel.cards.items():
-            card.render(self.readings[k], self.config, self.stale)
+            card.render(self.readings[k], self.config, k in self.stale_keys)
 
     def setting(self, name, value):
         if name == "language":
@@ -878,7 +910,9 @@ class Controller(QObject):
                 self.panel.settings_status.setText(str(exc))
             return
         self.config[name] = value
-        self.refresh_timer.setInterval(self.config["interval"] * 1000)
+        if name == "interval":
+            self.retry_schedule.change_interval(value)
+            self.schedule_next()
         self.save()
 
     def snooze(self):
@@ -926,7 +960,6 @@ class Controller(QObject):
             return
         self.closing = True
         self.wake_timer.stop()
-        self.headset_retry.stop()
         if self.wake_monitor:
             self.wake_monitor.close()
             self.wake_monitor = None
