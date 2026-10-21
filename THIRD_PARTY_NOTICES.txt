@@ -1,0 +1,30 @@
+ChargeDock includes Python 3.11, PySide6/Qt 6.12.0 and Shiboken6 6.12.0.
+
+Python: Python Software Foundation License
+https://docs.python.org/3/license.html
+
+PySide6 / Qt / Shiboken: LGPLv3 / GPLv3 / commercial licensing as applicable.
+The unmodified Qt Core, Gui, Widgets, Network and Svg libraries are dynamically loaded.
+Project source and build instructions are provided alongside the executable.
+https://www.qt.io/licensing/open-source-lgpl-obligations
+https://code.qt.io/cgit/pyside/pyside-setup.git/
+https://code.qt.io/cgit/qt/qtbase.git/
+https://code.qt.io/cgit/qt/qtsvg.git/
+
+PyInstaller 6.22.3: GPL with bootloader exception.
+https://pyinstaller.org/en/stable/license.html
+
+Microsoft Visual C++ runtime files: distributed unmodified with the Qt wheel.
+https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files
+
+Original Windows HID access code:
+https://github.com/yszyszysz233/2.4G-battery-viewer
+Base commit: f0e983e88900592237c7df9ae6b80b9dbeb3020b
+The base commit does not include a LICENSE file. No replacement license is
+granted here for upstream code. Git history and source attribution are retained.
+
+Protocol references (Python implementations in this project):
+G-Helper: https://github.com/seerge/g-helper (upstream GPL-3.0)
+HeadsetControl: https://github.com/Sapd/HeadsetControl (upstream GPL-3.0)
+See ATTRIBUTION.md for specific files, reference snapshots and contributions.
+See LICENSING.md for the scope of this repository's licensing declarations.

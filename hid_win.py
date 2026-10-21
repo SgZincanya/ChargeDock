@@ -2,6 +2,10 @@
 """
 hid_win.py —— 纯 ctypes 实现的 Windows HID 访问层（零第三方依赖）
 
+原始来源：yszyszysz233/2.4G-battery-viewer
+https://github.com/yszyszysz233/2.4G-battery-viewer/blob/f0e983e88900592237c7df9ae6b80b9dbeb3020b/hid_win.py
+来源和许可证状态见 ATTRIBUTION.md、LICENSING.md。
+
 只调用 Windows 自带的 setupapi.dll / hid.dll / kernel32.dll，
 不需要安装 hidapi、pywinusb、pyusb 等任何第三方库。
 

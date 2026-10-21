@@ -1,19 +1,13 @@
-# Python 缓存（字节码里会嵌入本机绝对路径）
 __pycache__/
-*.pyc
-*.pyo
-
-# 运行时产生的文件
-tray_pid.txt
-tray_debug.log
-_dbg*.txt
-_hidcap.log
-
-# 个人设置（刷新间隔 / 开机自启开关）
-tray_config.json
-
-# 编辑器 / 系统
-.vscode/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+.env
+*.log
+settings.json
+*.tmp
+.pytest_cache/
 .idea/
-Thumbs.db
-desktop.ini
+.vscode/
