@@ -22,7 +22,7 @@ import asus_control
 from core import (AlertPolicy, MODELS, ALL_MODELS, DJI_MODELS, Reading, atomic_json, load_config,
                    read_all, read_poll_file, user_data_dir)
 from icons import ROOT, app_icon, symbol
-from i18n import LANGUAGES, set_language, tr, translate_message
+from i18n import LANGUAGES, current_language, set_language, tr, translate_message
 from polling import RetrySchedule
 
 
@@ -52,7 +52,9 @@ class TranslatedLabel(QLabel):
 
     def setText(self, text):
         self.source_text = text
-        super().setText(translate_message(text))
+        translated = translate_message(text)
+        if self.text() != translated:
+            super().setText(translated)
 
     def retranslate(self):
         super().setText(translate_message(self.source_text))
@@ -232,6 +234,13 @@ class DeviceCard(QFrame):
 
     def render(self, reading, config, stale=False):
         self.reading = reading
+        signature = (reading.title, reading.level, reading.charging, reading.approximate,
+            reading.error, reading.battery_kind, reading.gauge, reading.state, reading.detail,
+            stale, tuple(self.colors.items()), current_language(),
+            repr(config.get("alerts", {}).get(self.key)))
+        if getattr(self, "_render_signature", None) == signature:
+            return
+        self._render_signature = signature
         self.title.setText(reading.title)
         c = self.colors
         self.glyph.setPixmap(symbol("microphone" if self.key in DJI_MODELS else self.key, c["text"], 29).pixmap(QSize(29, 29)))
@@ -355,7 +364,7 @@ class DjiDetails(QWidget):
         self.status_label = label("等待设备回报", "caption")
         self.status_label.setWordWrap(True)
         outer.addWidget(self.status_label)
-        self.capability_note = label("此接收器的降噪写入受固件限制，仅显示设备回报状态。", "caption")
+        self.capability_note = label("降噪 USB 指令被设备拒绝；可双击麦克风电源键切换降噪。", "caption")
         self.capability_note.setWordWrap(True); self.capability_note.hide()
         outer.addWidget(self.capability_note)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
@@ -373,6 +382,10 @@ class DjiDetails(QWidget):
                 text = label(desc.label); text.setWordWrap(True)
                 row.addWidget(text, 1)
                 choice = MenuChoice()
+                # Disabling a focused QPushButton transfers focus to the next
+                # enabled row. Repeating that for every row scrolls to the end.
+                # Tab traversal is already deliberately disabled in this app.
+                choice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 choice.setMinimumSize(110, 34); choice.setMaximumWidth(135)
                 choice.addItem("未知／不支持", None)
                 for value, caption, _ in desc.options:
@@ -784,7 +797,11 @@ class Panel(QWidget):
         self.devices_scroll.setMinimumHeight(min(self.devices_layout.sizeHint().height(), max(180, room.height() - 240)))
         height = (min(self.main_page.layout().sizeHint().height(), room.height() - 150) if self.stack.currentWidget() == self.main_page
                   else min(535, room.height() - 150))
-        self.stack.setFixedHeight(max(180, height))
+        target_height = max(180, height)
+        if self.stack.height() == target_height and getattr(self, "_sized_page", None) is self.stack.currentWidget():
+            return
+        self._sized_page = self.stack.currentWidget()
+        self.stack.setFixedHeight(target_height)
         self.shell.layout().activate()
         self.layout().activate()
         self.setFixedHeight(self.layout().sizeHint().height())
@@ -1026,7 +1043,9 @@ class Controller(QObject):
                                         if self.last_updated else "尚未读取到电量")
         self.panel.notice.setText(error or ("提醒已暂停 30 分钟" if time.time() < self.policy.snoozed_until else ""))
         self.panel.notice.setVisible(bool(self.panel.notice.text()))
-        self.panel.resize_to_content()
+        # Device pushes do not change the fixed-height details/settings pages.
+        if self.panel.stack.currentWidget() is self.panel.main_page:
+            self.panel.resize_to_content()
         tooltip = [tr("电量岛 · ChargeDock")]
         low = False
         for r in self.readings.values():
@@ -1043,7 +1062,10 @@ class Controller(QObject):
                 item = self.config["alerts"][r.key]
                 low |= item["enabled"] and r.level <= item["threshold"] and not r.charging
         self.tray.setToolTip("\n".join(tooltip))
-        self.tray.setIcon(symbol("tray", self.panel.colors["warning"] if low else self.panel.colors["accent"], 32))
+        tray_color = self.panel.colors["warning"] if low else self.panel.colors["accent"]
+        if getattr(self, "_tray_color", None) != tray_color:
+            self.tray.setIcon(symbol("tray", tray_color, 32))
+            self._tray_color = tray_color
 
     def save(self):
         try:

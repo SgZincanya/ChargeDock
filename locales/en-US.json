@@ -165,5 +165,6 @@
   "设备返回非成功 ACK，设置未确认；可能受固件能力限制": "Device returned a non-success ACK. Setting unconfirmed; firmware capability may be limited.",
   "此接收器的降噪写入受固件限制，仅显示设备回报状态。": "This receiver limits noise cancellation writes. Reported state is shown read-only.",
   "继续": "Continue",
-  "取消": "Cancel"
+  "取消": "Cancel",
+  "降噪 USB 指令被设备拒绝；可双击麦克风电源键切换降噪。": "The device rejects USB noise cancellation commands. Double-press the microphone power button to toggle it."
 }

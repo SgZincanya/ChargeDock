@@ -1,6 +1,6 @@
 {
   "date": "2026-10-22",
-  "unit_tests_passed": 98,
+  "unit_tests_passed": 101,
   "original_regression_tests": 69,
   "references": {
     "DJI-Mic-Control": "9ba76880807a71d4eaba74c785dbee186a98f43b",
@@ -158,12 +158,11 @@
   },
   "frozen": {
     "tests": [
-      "Packaged GUI + WinUSB worker + both transmitter gauges",
-      "TX2 command ACK + state; TX1 unchanged",
+      "Packaged GUI + WinUSB worker + current transmitter states",
+      "TX2 command ACK + reported state",
       "Original tones and all settings restored"
     ],
     "original_tones": {
-      "1": "standard",
       "2": "standard"
     },
     "original_settings": {
@@ -177,7 +176,7 @@
       "safety-track": false,
       "mic-leds": true,
       "tx-auto-off-15m": true,
-      "noise-cancel-button": false,
+      "noise-cancel-button": true,
       "low-cut": false
     },
     "restored": true,
@@ -185,7 +184,7 @@
     "exit_code": 0,
     "real_config_unchanged": true,
     "installed_exe_unchanged": true,
-    "exe_sha256": "c58352001ee870a79e8866fb31c106845a18789bb57e6f63adadc3d507fca6d9"
+    "exe_sha256": "9b77e569401a36aaf6b71c0da68c2ac8959a0f73dced3b97b86a27e28a124e3a"
   },
   "limitations": [
     "Mic Mini 2 receiver rejects NC 0x37/0x38 with ACK 0xFF; shown read-only",
@@ -194,6 +193,125 @@
     "Cannot coexist with DJI Mic Control holding MI_06",
     "Multiple receivers are rejected rather than automatically selected"
   ],
+  "stability_update": {
+    "nc_address_probe": {
+      "original": {
+        "2": {
+          "noise-cancel": "basic",
+          "noise-cancel-power": false
+        }
+      },
+      "tests": [
+        {
+          "target": 2,
+          "observed_unit": 2,
+          "setting": "noise-cancel-power",
+          "command": "0x38",
+          "ack": 255,
+          "desired": true,
+          "reported": false,
+          "confirmed": false
+        },
+        {
+          "target": 2,
+          "observed_unit": 2,
+          "setting": "noise-cancel",
+          "command": "0x37",
+          "ack": 255,
+          "desired": "strong",
+          "reported": "basic",
+          "confirmed": false
+        },
+        {
+          "target": 0,
+          "observed_unit": 2,
+          "setting": "noise-cancel-power",
+          "command": "0x38",
+          "ack": 255,
+          "desired": true,
+          "reported": false,
+          "confirmed": false
+        },
+        {
+          "target": 0,
+          "observed_unit": 2,
+          "setting": "noise-cancel",
+          "command": "0x37",
+          "ack": 255,
+          "desired": "strong",
+          "reported": "basic",
+          "confirmed": false
+        }
+      ],
+      "restored": true,
+      "restore_errors": [],
+      "crc_rejected": 0
+    },
+    "native_ui": {
+      "scroll": [
+        {
+          "setting": "voice-tone",
+          "position": 0,
+          "after": 0
+        },
+        {
+          "setting": "voice-tone",
+          "position": 0,
+          "after": 0
+        },
+        {
+          "setting": "low-cut",
+          "position": 120,
+          "after": 120
+        },
+        {
+          "setting": "low-cut",
+          "position": 120,
+          "after": 120
+        }
+      ],
+      "restored": true,
+      "original": {
+        "tone2": "standard",
+        "low_cut": false
+      },
+      "idle_tray_icon_resets": 0,
+      "idle_window_resizes": 0,
+      "crc_rejected": 0
+    },
+    "native_ui_with_frozen_worker": {
+      "scroll": [
+        {
+          "setting": "voice-tone",
+          "position": 0,
+          "after": 0
+        },
+        {
+          "setting": "voice-tone",
+          "position": 0,
+          "after": 0
+        },
+        {
+          "setting": "low-cut",
+          "position": 120,
+          "after": 120
+        },
+        {
+          "setting": "low-cut",
+          "position": 120,
+          "after": 120
+        }
+      ],
+      "restored": true,
+      "original": {
+        "tone2": "standard",
+        "low_cut": false
+      },
+      "idle_tray_icon_resets": 0,
+      "idle_window_resizes": 0,
+      "crc_rejected": 0
+    }
+  },
   "simulation_only": [
     "all gauge values",
     "charging",

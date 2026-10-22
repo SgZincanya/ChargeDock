@@ -29,11 +29,13 @@ class DjiClient(QObject):
         self.state = {}
         self.pending_id = None
         self.last_lease = 0
+        self.last_presentation = None
 
     def start(self):
         # Never replay a command after a crash or restart.
         (self.folder / "command.json").unlink(missing_ok=True)
         self.pending_id = None
+        self.last_presentation = None
         (self.folder / "lease").touch()
         args = ["--dji-worker", "--data-dir", str(self.folder)]
         if not getattr(sys, "frozen", False):
@@ -80,7 +82,13 @@ class DjiClient(QObject):
                 result = state.get("command_result") or {}
                 if result.get("id") == self.pending_id and result.get("code") not in ("pending", "rebooting"):
                     self.pending_id = None
-                self.updated.emit(values, state)
+                visible = {k: v for k, v in state.items() if k not in ("heartbeat", "readings", "rejected")}
+                visible["readings"] = [{k: v for k, v in item.items() if k != "updated"}
+                                       for item in state["readings"]]
+                signature = json.dumps(visible, ensure_ascii=False, sort_keys=True)
+                if signature != self.last_presentation:
+                    self.last_presentation = signature
+                    self.updated.emit(values, state)
         except (OSError, ValueError, TypeError, KeyError):
             pass
         if now - self.last_heartbeat > 6:

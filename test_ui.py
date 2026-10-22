@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
@@ -41,6 +41,9 @@ class UiTests(unittest.TestCase):
     def dispose(self):
         self.controller.cleanup()
         self.panel.deleteLater()
+        self.controller.deleteLater()
+        self.server.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
     def dji_fixture(self):
@@ -75,6 +78,58 @@ class UiTests(unittest.TestCase):
         choice.setCurrentIndex(choice.findData('rich'))
         client.submit.assert_called_once_with('voice-tone','rich',2,False)
         self.assertEqual(choice.currentData(),'standard')
+
+    def test_dji_pending_confirmation_preserves_scroll_position(self):
+        from PySide6.QtWidgets import QScrollArea
+        client=self.dji_fixture()
+        self.panel.show_dji(2); self.panel.show(); self.panel.activateWindow(); self.app.processEvents()
+        page=self.panel.dji_page
+        scroll=page.findChild(QScrollArea)
+        choice=page.controls['voice-tone']
+        QTest.mouseClick(choice,Qt.MouseButton.LeftButton)
+        choice.choice_menu.hide(); self.app.processEvents()
+        bar=scroll.verticalScrollBar(); bar.setValue(0)
+        self.assertGreater(bar.maximum(),0)
+        client.pending_id='pending'
+        page.refresh(); self.app.processEvents()
+        self.assertEqual(bar.value(),0)
+        client.pending_id=None
+        page.refresh(); self.app.processEvents()
+        self.assertEqual(bar.value(),0)
+
+    def test_unchanged_dji_push_does_not_reset_tray_or_resize_details(self):
+        client=self.dji_fixture()
+        self.panel.show_dji(2); self.panel.show(); self.app.processEvents()
+        self.controller.update_presentation()
+        with patch.object(self.controller.tray,'setIcon') as icon, \
+                patch.object(self.panel,'resize_to_content') as resize:
+            self.controller.receive_dji(list(self.controller.readings.values())[3:],client.state)
+        icon.assert_not_called()
+        resize.assert_not_called()
+
+    def test_dji_heartbeat_is_not_a_visual_change_but_setting_changes_are(self):
+        import time
+        from PySide6.QtCore import QProcess
+        from dji_client import DjiClient
+        from core import atomic_json
+        fixture=self.dji_fixture()
+        client=DjiClient(Path(self.folder.name))
+        received=[]; client.updated.connect(lambda values,state:received.append(state))
+        client.started=time.time()-1
+        raw=json.loads(json.dumps(fixture.state))
+        try:
+            with patch.object(client.process,'state',return_value=QProcess.ProcessState.Running):
+                atomic_json(client.folder/'state.json',raw); client.tick()
+                raw['heartbeat']=time.time()
+                for reading in raw['readings']: reading['updated']+=1
+                atomic_json(client.folder/'state.json',raw); client.tick()
+                self.assertEqual(len(received),1)
+                self.assertEqual(client.state['heartbeat'],raw['heartbeat'])
+                raw['tx']['2']['tone']='rich'
+                atomic_json(client.folder/'state.json',raw); client.tick()
+                self.assertEqual(len(received),2)
+        finally:
+            client.stop()
 
     def test_dji_stale_and_rejected_controls_disabled(self):
         client=self.dji_fixture()
