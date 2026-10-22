@@ -28,3 +28,13 @@ G-Helper: https://github.com/seerge/g-helper (upstream GPL-3.0)
 HeadsetControl: https://github.com/Sapd/HeadsetControl (upstream GPL-3.0)
 See ATTRIBUTION.md for specific files, reference snapshots and contributions.
 See LICENSING.md for the scope of this repository's licensing declarations.
+
+DJI protocol references:
+ShadowBitBasher/DJI-Mic-Control, Unlicense.
+https://github.com/ShadowBitBasher/DJI-Mic-Control
+See licenses/DJI-Mic-Control-Unlicense.txt (complete upstream license).
+usokawa/dji-mic-mo, Copyright (c) 2026 usokawa_, BSD-2-Clause.
+https://github.com/usokawa/dji-mic-mo
+See licenses/dji-mic-mo-BSD-2-Clause.txt (complete copyright and license).
+Only protocol fields/capability information are referenced; no additional
+runtime, external microphone application or driver installer is included.

@@ -43,6 +43,73 @@ class UiTests(unittest.TestCase):
         self.panel.deleteLater()
         self.app.processEvents()
 
+    def dji_fixture(self):
+        import time
+        from dataclasses import asdict
+        from unittest.mock import Mock
+        from dji_protocol import Status, readings
+        from test_dji import status_frame
+        status=Status(); status.decode(status_frame(((1,1,False),(2,5,True))))
+        for tx in status.tx.values(): tx['product']='DJI Mic Mini 2'
+        raw=json.loads(json.dumps({'heartbeat':time.time(),'protocol':2,'settings':status.settings,
+            'tx':status.tx,'readings':[asdict(r) for r in readings(status)]}))
+        client=SimpleNamespace(state=raw,pending_id=None,submit=Mock(return_value=True),stop=Mock(),refresh=Mock())
+        self.controller.dji=client
+        self.controller.receive_dji(readings(status),raw)
+        return client
+
+    def test_dji_card_uses_category_not_percent_and_details_keep_unit(self):
+        self.dji_fixture()
+        card=self.panel.cards['mic2']
+        self.assertEqual(card.percentage.text(),'电量偏低')
+        self.assertNotIn('%',card.percentage.text())
+        self.panel.show(); self.app.processEvents()
+        QTest.mouseClick(card.details_button,Qt.MouseButton.LeftButton)
+        self.assertEqual(self.panel.dji_page.unit,2)
+        self.assertIs(self.panel.stack.currentWidget(),self.panel.dji_page)
+
+    def test_dji_control_is_not_optimistic_and_voice_tone_targets_actual_unit(self):
+        client=self.dji_fixture()
+        self.panel.show_dji(2)
+        choice=self.panel.dji_page.controls['voice-tone']
+        choice.setCurrentIndex(choice.findData('rich'))
+        client.submit.assert_called_once_with('voice-tone','rich',2,False)
+        self.assertEqual(choice.currentData(),'standard')
+
+    def test_dji_stale_and_rejected_controls_disabled(self):
+        client=self.dji_fixture()
+        client.state['unavailable_settings']=['noise-cancel']
+        self.panel.show_dji(1)
+        self.assertFalse(self.panel.dji_page.controls['noise-cancel'].isEnabled())
+        client.state['heartbeat']=0
+        self.panel.dji_page.refresh()
+        self.assertTrue(all(not choice.isEnabled() for choice in self.panel.dji_page.controls.values()))
+
+    def test_dji_reboot_cancel_does_not_send_or_optimistically_change(self):
+        from PySide6.QtWidgets import QMessageBox
+        client=self.dji_fixture()
+        self.panel.show_dji(2)
+        choice=self.panel.dji_page.controls['plug-free']
+        with patch.object(QMessageBox,'exec',return_value=0):
+            choice.setCurrentIndex(choice.findData(True))
+        client.submit.assert_not_called()
+        self.assertIs(choice.currentData(),False)
+
+    def test_dji_partial_update_preserves_existing_device_readings(self):
+        self.controller.receive([Reading('mouse','魔刃 X','',74)],'')
+        self.dji_fixture()
+        self.assertEqual(self.controller.readings['mouse'].level,74)
+        self.assertEqual(self.controller.readings['mic2'].gauge,5)
+
+    def test_dji_unknown_gauge_still_shows_confirmed_charging(self):
+        from dji_protocol import Status,readings
+        from test_dji import status_frame
+        status=Status(); status.decode(status_frame(((2,0,True),)))
+        self.controller.receive_dji(readings(status),{})
+        card=self.panel.cards['mic2']
+        self.assertEqual(card.percentage.text(),'电量未知')
+        self.assertEqual(card.state_text.text(),'正在充电')
+
     def test_one_tray_and_tool_window(self):
         self.assertEqual(len(self.controller.findChildren(QSystemTrayIcon)), 1)
         self.assertTrue(self.panel.windowFlags() & Qt.WindowType.Tool)
@@ -202,7 +269,7 @@ class UiTests(unittest.TestCase):
 
     def test_manual_refresh_bypasses_backoff(self):
         schedule = self.controller.retry_schedule
-        schedule.record([], list(self.controller.readings), 60)
+        schedule.record([], list(schedule.keys), 60)
         with patch.object(self.controller.poller, "start", return_value=True) as start:
             self.controller.refresh()
             start.assert_called_once_with(["mouse", "keyboard", "headset"])

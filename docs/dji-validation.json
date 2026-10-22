@@ -1,0 +1,207 @@
+{
+  "date": "2026-10-22",
+  "unit_tests_passed": 98,
+  "original_regression_tests": 69,
+  "references": {
+    "DJI-Mic-Control": "9ba76880807a71d4eaba74c785dbee186a98f43b",
+    "dji-mic-mo": "7c2dd5b0262f35b475193224fca2681d75987e9c"
+  },
+  "battery": {
+    "current_live_readings": [
+      {
+        "key": "mic1",
+        "battery_kind": "gauge",
+        "level": null,
+        "gauge": 1,
+        "charging": false,
+        "state": "online",
+        "protocol": 2
+      },
+      {
+        "key": "mic2",
+        "battery_kind": "gauge",
+        "level": null,
+        "gauge": 1,
+        "charging": false,
+        "state": "online",
+        "protocol": 2
+      }
+    ],
+    "crc_rejected": 0
+  },
+  "controls": {
+    "original": {
+      "settings": {
+        "noise-cancel": "basic",
+        "noise-cancel-power": false,
+        "camera-power": false,
+        "auto-off-15m": true,
+        "stereo": "mono",
+        "plug-free": false,
+        "clip-limiter": true,
+        "safety-track": false,
+        "mic-leds": true,
+        "tx-auto-off-15m": true,
+        "noise-cancel-button": false,
+        "low-cut": false
+      },
+      "tones": {
+        "1": "standard",
+        "2": "standard"
+      }
+    },
+    "tests": [
+      {
+        "setting": "noise-cancel-power",
+        "error": "Non-success ACK 0xFF",
+        "ack_and_state": false
+      },
+      {
+        "setting": "noise-cancel",
+        "error": "Non-success ACK 0xFF",
+        "ack_and_state": false
+      },
+      {
+        "setting": "low-cut",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "stereo",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "safety-track",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "clip-limiter",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "mic-leds",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "auto-off-15m",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "tx-auto-off-15m",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "noise-cancel-button",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "camera-power",
+        "changed_and_restored": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "voice-tone",
+        "unit": 1,
+        "changed_and_restored": true,
+        "other_unit_unchanged": true,
+        "ack_and_state": true
+      },
+      {
+        "setting": "voice-tone",
+        "unit": 2,
+        "changed_and_restored": true,
+        "other_unit_unchanged": true,
+        "ack_and_state": true
+      }
+    ],
+    "restored": true,
+    "reboot_setting_tested": false,
+    "final": {
+      "settings": {
+        "noise-cancel": "basic",
+        "noise-cancel-power": false,
+        "camera-power": false,
+        "auto-off-15m": true,
+        "stereo": "mono",
+        "plug-free": false,
+        "clip-limiter": true,
+        "safety-track": false,
+        "mic-leds": true,
+        "tx-auto-off-15m": true,
+        "noise-cancel-button": false,
+        "low-cut": false
+      },
+      "tones": {
+        "1": "standard",
+        "2": "standard"
+      }
+    },
+    "restore_errors": [],
+    "crc_rejected": 0
+  },
+  "source_ui": {
+    "original_tones": {
+      "1": "standard",
+      "2": "standard"
+    },
+    "ui_to_worker_confirmed": true,
+    "restored": true,
+    "noise_controls_readonly": true,
+    "crc_rejected": 0
+  },
+  "frozen": {
+    "tests": [
+      "Packaged GUI + WinUSB worker + both transmitter gauges",
+      "TX2 command ACK + state; TX1 unchanged",
+      "Original tones and all settings restored"
+    ],
+    "original_tones": {
+      "1": "standard",
+      "2": "standard"
+    },
+    "original_settings": {
+      "noise-cancel": "basic",
+      "noise-cancel-power": false,
+      "camera-power": false,
+      "auto-off-15m": true,
+      "stereo": "mono",
+      "plug-free": false,
+      "clip-limiter": true,
+      "safety-track": false,
+      "mic-leds": true,
+      "tx-auto-off-15m": true,
+      "noise-cancel-button": false,
+      "low-cut": false
+    },
+    "restored": true,
+    "crc_rejected": 0,
+    "exit_code": 0,
+    "real_config_unchanged": true,
+    "installed_exe_unchanged": true,
+    "exe_sha256": "c58352001ee870a79e8866fb31c106845a18789bb57e6f63adadc3d507fca6d9"
+  },
+  "limitations": [
+    "Mic Mini 2 receiver rejects NC 0x37/0x38 with ACK 0xFF; shown read-only",
+    "Rebooting plug-free speaker not hardware-tested",
+    "v1 battery/control unsupported; v1 connection parsing tested with fixtures only",
+    "Cannot coexist with DJI Mic Control holding MI_06",
+    "Multiple receivers are rejected rather than automatically selected"
+  ],
+  "simulation_only": [
+    "all gauge values",
+    "charging",
+    "TX2-only numbering",
+    "CRC errors",
+    "truncated/coalesced/unrelated packets",
+    "reconnect",
+    "timeouts",
+    "reboot confirmation"
+  ]
+}

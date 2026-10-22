@@ -37,6 +37,29 @@
 - 上游许可证：[GPL-3.0](https://github.com/Sapd/HeadsetControl/blob/91ee690a5e302a10a6f4f75a46be05846a38a3b0/license)。
 - 对应本项目实现：`core.py` 的耳机查询与回复解析。
 
+### ShadowBitBasher / DJI-Mic-Control
+
+- 项目：<https://github.com/ShadowBitBasher/DJI-Mic-Control>
+- 核对提交：[`9ba76880807a71d4eaba74c785dbee186a98f43b`](https://github.com/ShadowBitBasher/DJI-Mic-Control/tree/9ba76880807a71d4eaba74c785dbee186a98f43b)
+- 参考 `PROTOCOL.md`、`crates/protocol/src/{packet,crc,settings,state}.rs`、
+  `models/mic_mini.rs` 和 `crates/device/src/{actor,manager}.rs`。
+- 本分支以 Python 改写帧、CRC、v1/v2 槽和控制字段；独立实现 Windows WinUSB、
+  管理子进程和 ACK 加真实回报确认，不引入上游程序、Rust/Tauri 运行时或驱动安装器。
+- 上游当前 LICENSE 为 **Unlicense**，原文附于 `licenses/DJI-Mic-Control-Unlicense.txt`。
+  注意接收 CRC8 的反射寄存器初值与文档写法不同，本机实际数据已校验；不会照搬上游不校验接收 CRC 的行为。
+
+### usokawa / dji-mic-mo
+
+- 项目：<https://github.com/usokawa/dji-mic-mo>
+- 核对提交：[`7c2dd5b0262f35b475193224fca2681d75987e9c`](https://github.com/usokawa/dji-mic-mo/tree/7c2dd5b0262f35b475193224fca2681d75987e9c)
+- 仅补充参考 `dji-mic-mo.py` 的 `RULES`：Mic Mini 2 接收器不允许写入降噪开关/强度，
+  以及各 TX 槽中降噪状态字段。此限制与本机实际 `0xFF` ACK 一致；不引用其驱动替换建议。
+- 上游 **BSD-2-Clause**，完整原文（含版权声明）附于 `licenses/dji-mic-mo-BSD-2-Clause.txt`。
+- 本项目不引入其 pyusb/BLE 运行时，也不涉及内部录音、删除或格式化功能。
+
+WinUSB 枚举依据 Microsoft 的 [WinUSB 驱动注册说明](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/winusb-installation)
+和 SetupAPI / Configuration Manager 接口，不使用本机特定 GUID。
+
 ## 运行时与打包依赖
 
 Python、PySide6 / Qt / Shiboken、PyInstaller 和 Microsoft Visual C++ 运行库的说明见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)，附带的许可证文本位于 [licenses/](licenses/)。

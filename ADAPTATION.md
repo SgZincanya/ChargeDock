@@ -1,6 +1,15 @@
 # 自定义设备与电量提醒：给用户和 AI 的适配指南
 
-把本仓库链接和下方模板一起交给能阅读、修改代码并执行测试的 AI，即可从现有工程开始适配。当前主程序内置三个设备类别；尚未提供通用设备添加、任意协议导入、隐藏或排序的图形界面。
+DJI 分支新增 `DJI_MODELS` 和 `ALL_MODELS`，原 `MODELS` 仍表示三类 HID 设备。
+DJI 通过独立 WinUSB 工作进程读取，具体见 [DJI.md](DJI.md)。不要把它加入 HID 枚举或按 TX 分别打开接口。
+
+`Reading` 新增兼容字段：`battery_kind`（默认 `percent`）、`gauge`、`state`、`detail`、`protocol`。
+档位读数必须使用 `battery_kind="gauge"`、`level=None`；`gauge` 只允许 1–7 或 `None`。
+0/未知不得转为 0%，v1 不允许携带 v2 档位。`validate_readings()` 同时校验两种读数。
+持续推送使用 DJI 独立监督和重连，不进入原 HID 的 `RetrySchedule`；所有局部更新按 key 合并。
+提醒策略仍只包含鼠标和键盘。
+
+把本仓库链接和下方模板一起交给能阅读、修改代码并执行测试的 AI，即可从现有工程开始适配。原主程序内置三个 HID 设备类别，DJI 分支另有双麦克风；尚未提供通用设备添加、任意协议导入、隐藏或排序的图形界面。
 
 ## 可以怎样 DIY
 

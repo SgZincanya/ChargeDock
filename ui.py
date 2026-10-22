@@ -16,10 +16,10 @@ from PySide6.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter,
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox, QComboBox, QFrame,
     QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QMenu, QProgressBar, QPushButton,
-    QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
+    QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget, QMessageBox)
 
 import asus_control
-from core import (AlertPolicy, MODELS, Reading, atomic_json, load_config,
+from core import (AlertPolicy, MODELS, ALL_MODELS, DJI_MODELS, Reading, atomic_json, load_config,
                    read_all, read_poll_file, user_data_dir)
 from icons import ROOT, app_icon, symbol
 from i18n import LANGUAGES, set_language, tr, translate_message
@@ -177,14 +177,15 @@ class MenuChoice(QPushButton):
 
 class DeviceCard(QFrame):
     SUBTITLES = {"mouse": "CHAKRAM X · 2.4G", "keyboard": "AZOTH · OMNI",
-                 "headset": "Nova Pro Wireless · 2.4G"}
+                 "headset": "Nova Pro Wireless · 2.4G", "mic1": "DJI Mic Mini 2 · TX 1",
+                 "mic2": "DJI Mic Mini 2 · TX 2"}
 
     def __init__(self, key):
         super().__init__()
         self.key = key
         self.setObjectName("deviceCard")
         self.setMinimumHeight(104)
-        self.reading = Reading(key, *MODELS[key])
+        self.reading = Reading(key, *ALL_MODELS[key])
         self.colors = PALETTES["light"]
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 13, 16, 13)
@@ -205,6 +206,9 @@ class DeviceCard(QFrame):
         row.addLayout(text, 1)
         self.percentage = label("—", "percentage")
         self.percentage.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if key in DJI_MODELS:
+            self.percentage.setWordWrap(True)
+            self.percentage.setMaximumWidth(150)
         row.addWidget(self.percentage)
         outer.addLayout(row)
         lower = QHBoxLayout()
@@ -218,13 +222,19 @@ class DeviceCard(QFrame):
         self.state_text = label("正在读取", "caption")
         self.state_text.setAlignment(Qt.AlignmentFlag.AlignRight)
         lower.addWidget(self.state_text)
+        if key in DJI_MODELS:
+            self.details_button = QPushButton(tr("详情"))
+            self.details_button.setProperty("sourceText", "详情")
+            self.details_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.details_button.setMinimumSize(44, 28)
+            lower.insertWidget(0, self.details_button)
         outer.addLayout(lower)
 
     def render(self, reading, config, stale=False):
         self.reading = reading
         self.title.setText(reading.title)
         c = self.colors
-        self.glyph.setPixmap(symbol(self.key, c["text"], 29).pixmap(QSize(29, 29)))
+        self.glyph.setPixmap(symbol("microphone" if self.key in DJI_MODELS else self.key, c["text"], 29).pixmap(QSize(29, 29)))
         level = reading.level
         low = (self.key in ("mouse", "keyboard") and level is not None
                and config["alerts"][self.key]["enabled"]
@@ -244,6 +254,22 @@ class DeviceCard(QFrame):
         self.setToolTip(translate_message(reading.error) if reading.error else tr(
             "耳机按 0–8 档换算，显示近似电量；耳机不发送低电量提醒。") if reading.approximate else "")
         self.setAccessibleName(f"{tr(reading.title)} {self.percentage.text()} {tr(state)}")
+        if self.key in DJI_MODELS:
+            from dji_protocol import GAUGE_TEXT, GAUGE_BAR, STATE_TEXT
+            gauge = reading.gauge
+            text = GAUGE_TEXT.get(gauge, "电量未知")
+            self.percentage.setText(text if reading.state in ("online", "unknown", "stale") else "—")
+            self.percentage.setStyleSheet(f"color:{c['text']};font-size:15pt;")
+            self.bar.setValue(GAUGE_BAR.get(gauge, 0))
+            self.bar.setVisible(gauge is not None and reading.state in ("online", "stale"))
+            state = ("上次读取" if stale or reading.state == "stale" else "正在充电"
+                     if reading.charging and reading.state in ("online", "unknown") else STATE_TEXT.get(reading.state, "正在读取"))
+            self.state_text.setText(state)
+            self.state_text.setWordWrap(True)
+            self.state_text.setMaximumWidth(240)
+            self.setToolTip(tr("电量条仅示意档位，并非精确百分比；麦克风不发送低电量提醒。") + "\n" + tr(state)
+                            + ("\n" + reading.detail if reading.detail else ""))
+            self.setAccessibleName(f"{tr(reading.title)} {tr(text)} {tr(state)}")
 
 
 class Poller(QObject):
@@ -319,6 +345,104 @@ class Poller(QObject):
             self.output.unlink(missing_ok=True)
 
 
+class DjiDetails(QWidget):
+    """Reported values only; selections revert until a fresh report arrives."""
+    def __init__(self, panel):
+        super().__init__()
+        from dji_control import SETTINGS
+        self.panel, self.unit, self.controls = panel, 1, {}
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0)
+        self.status_label = label("等待设备回报", "caption")
+        self.status_label.setWordWrap(True)
+        outer.addWidget(self.status_label)
+        self.capability_note = label("此接收器的降噪写入受固件限制，仅显示设备回报状态。", "caption")
+        self.capability_note.setWordWrap(True); self.capability_note.hide()
+        outer.addWidget(self.capability_note)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        form = QWidget(); form.setObjectName("settingsForm")
+        layout = QVBoxLayout(form); layout.setContentsMargins(0, 0, 5, 0)
+        for target, title in (("tx", "此麦克风"), ("broadcast", "发射器设置（所有在线麦克风）"), ("rx", "接收器设置")):
+            heading = label(title, "section"); heading.setWordWrap(True); layout.addWidget(heading)
+            for key, desc in SETTINGS.items():
+                if desc.target != target:
+                    continue
+                card = QFrame(); card.setObjectName("deviceCard")
+                row = QHBoxLayout(card); row.setContentsMargins(12, 8, 12, 8)
+                text = label(desc.label); text.setWordWrap(True)
+                row.addWidget(text, 1)
+                choice = MenuChoice()
+                choice.setMinimumSize(110, 34); choice.setMaximumWidth(135)
+                choice.addItem("未知／不支持", None)
+                for value, caption, _ in desc.options:
+                    choice.addItem(caption, value)
+                choice.currentIndexChanged.connect(lambda index, k=key: self.change(k))
+                row.addWidget(choice)
+                self.controls[key] = choice
+                layout.addWidget(card)
+        note = label("设置会影响实际音频。立体声与安全音轨互斥；免拔插外放会重启接收器。", "caption")
+        note.setWordWrap(True); layout.addWidget(note); layout.addStretch()
+        scroll.setWidget(form); outer.addWidget(scroll)
+
+    def refresh(self):
+        from dji_control import ERRORS, reported, status_from_message
+        client = self.panel.controller.dji
+        raw = client.state if client else {}
+        status = status_from_message(raw) if raw else None
+        self.capability_note.setVisible(bool(status and status.receiver_product == "DJI Mic Mini 2"))
+        live = bool(status and time.time() - raw.get("heartbeat", 0) < 2
+                    and all(r.get("state") in ("online", "unknown", "offline") for r in raw.get("readings", [])))
+        pending = bool(client and client.pending_id)
+        result = raw.get("command_result") or {}
+        message = "等待设备回报"
+        if pending:
+            message = "正在等待设备确认"
+        elif result:
+            message = ERRORS.get(result.get("code"), "设置失败，设备未确认更改")
+        elif live:
+            message = "显示设备回报的真实设置"
+        if not live and raw.get("readings"):
+            from dji_protocol import STATE_TEXT
+            message = STATE_TEXT.get(raw["readings"][0].get("state"), "等待设备回报")
+        self.status_label.setText(message)
+        for key, choice in self.controls.items():
+            value = reported(status, key, self.unit) if live else None
+            choice.blockSignals(True)
+            choice.setCurrentIndex(choice.findData(value))
+            choice.blockSignals(False)
+            capability_key = key + (":" + str(self.unit) if key == "voice-tone" else "")
+            rejected = capability_key in raw.get("unavailable_settings", [])
+            choice.setEnabled(live and not pending and value is not None and not rejected)
+            choice.setToolTip(tr("设备返回非成功 ACK，设置未确认；可能受固件能力限制") if rejected else "")
+
+    def change(self, key):
+        from dji_control import SETTINGS
+        client = self.panel.controller.dji
+        value = self.controls[key].currentData()
+        if not client or value is None:
+            self.refresh(); return
+        desc = SETTINGS[key]
+        confirmed = False
+        if desc.reboot:
+            dialog = QMessageBox(self.panel)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle(tr("重启接收器"))
+            dialog.setText(tr("更改免拔插外放会重启接收器并短暂中断音频。是否继续？"))
+            proceed = dialog.addButton(tr("继续"), QMessageBox.ButtonRole.AcceptRole)
+            cancel = dialog.addButton(tr("取消"), QMessageBox.ButtonRole.RejectRole)
+            dialog.setDefaultButton(cancel)
+            dialog.exec()
+            if dialog.clickedButton() is not proceed:
+                self.refresh(); return
+            confirmed = True
+        try:
+            client.submit(key, value, self.unit if desc.target == "tx" else None, confirmed)
+        except OSError:
+            self.status_label.setText("设置发送失败，请检查连接")
+        self.refresh()
+
+
 class Panel(QWidget):
     def __init__(self, controller):
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
@@ -369,11 +493,24 @@ class Panel(QWidget):
         main = QVBoxLayout(self.main_page)
         main.setContentsMargins(0, 0, 0, 0)
         main.setSpacing(10)
+        self.devices_scroll = QScrollArea()
+        self.devices_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.devices_scroll.setWidgetResizable(True)
+        self.devices_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        devices = QWidget()
+        devices.setObjectName("settingsForm")
+        self.devices_layout = QVBoxLayout(devices)
+        self.devices_layout.setContentsMargins(0, 0, 0, 0)
+        self.devices_layout.setSpacing(10)
+        self.devices_scroll.setWidget(devices)
+        main.addWidget(self.devices_scroll)
         self.cards = {}
-        for key in MODELS:
+        for key in ALL_MODELS:
             card = DeviceCard(key)
             self.cards[key] = card
-            main.addWidget(card)
+            self.devices_layout.addWidget(card)
+            if key in DJI_MODELS:
+                card.details_button.clicked.connect(lambda checked=False, u=int(key[-1]): self.show_dji(u))
         self.notice = label("", "caption")
         self.notice.setWordWrap(True)
         self.notice.hide()
@@ -385,6 +522,8 @@ class Panel(QWidget):
         footer.addWidget(self.refresh_button)
         main.addLayout(footer)
         self.build_settings()
+        self.dji_page = DjiDetails(self)
+        self.stack.addWidget(self.dji_page)
         self.dismiss = QTimer(self)
         self.dismiss.setSingleShot(True)
         self.dismiss.timeout.connect(self.auto_hide)
@@ -621,6 +760,16 @@ class Panel(QWidget):
         self.update_asus_state()
         self.resize_to_content()
 
+    def show_dji(self, unit):
+        self.stack.setCurrentWidget(self.dji_page)
+        self.dji_page.unit = unit
+        self.back.show(); self.logo.hide(); self.settings_button.hide()
+        self.heading.setText("麦克风 1" if unit == 1 else "麦克风 2")
+        self.tagline.setText("大疆设备控制")
+        self.dismiss.stop()
+        self.dji_page.refresh()
+        self.resize_to_content()
+
     def update_asus_state(self):
         state = asus_control.status()
         self.asus_state.setText({"enabled": "奥创浮窗组件：已启用", "disabled": "奥创浮窗组件：已关闭",
@@ -632,7 +781,8 @@ class Panel(QWidget):
     def resize_to_content(self):
         screen = self.screen() or QApplication.primaryScreen()
         room = screen.availableGeometry()
-        height = (self.main_page.layout().sizeHint().height() if self.stack.currentWidget() == self.main_page
+        self.devices_scroll.setMinimumHeight(min(self.devices_layout.sizeHint().height(), max(180, room.height() - 240)))
+        height = (min(self.main_page.layout().sizeHint().height(), room.height() - 150) if self.stack.currentWidget() == self.main_page
                   else min(535, room.height() - 150))
         self.stack.setFixedHeight(max(180, height))
         self.shell.layout().activate()
@@ -674,7 +824,8 @@ class Panel(QWidget):
         super().changeEvent(event)
 
     def hide_if_inactive(self):
-        if not self.isActiveWindow() and QApplication.activePopupWidget() is None:
+        if (not self.isActiveWindow() and QApplication.activePopupWidget() is None
+                and QApplication.activeModalWidget() is None):
             self.hide()
 
     def closeEvent(self, event):
@@ -694,7 +845,9 @@ class Controller(QObject):
         set_language(self.config["language"])
         self.app.setApplicationDisplayName(tr("电量岛"))
         self.policy = AlertPolicy()
-        self.readings = {key: Reading(key, *value) for key, value in MODELS.items()}
+        self.readings = {key: Reading(key, *value) for key, value in ALL_MODELS.items()}
+        from dji_protocol import readings as dji_readings, Status
+        self.readings.update({r.key: r for r in dji_readings(Status(), "connecting")})
         self.stale = False
         self.stale_keys = set()
         self.last_updated = 0
@@ -719,6 +872,12 @@ class Controller(QObject):
         self.tray.setContextMenu(self.menu)
         self.poller = Poller(self.data_dir)
         self.poller.completed.connect(self.receive)
+        self.dji = None
+        if not args.snapshot:
+            from dji_client import DjiClient
+            self.dji = DjiClient(self.data_dir)
+            self.dji.updated.connect(self.receive_dji)
+            self.dji.start()
         self.wake_timer = QTimer(self)
         self.pending_wake_keys = set()
         self.wake_timer.setSingleShot(True)
@@ -767,6 +926,8 @@ class Controller(QObject):
     def refresh(self):
         if self.closing or self.poller.active:
             return
+        if self.dji:
+            self.dji.refresh()
         self.retry_schedule.reset()
         self.start_reading(list(MODELS))
 
@@ -850,6 +1011,13 @@ class Controller(QObject):
                         "tool_window": bool(ex_style & 0x80), "app_window": bool(ex_style & 0x40000)})
             QTimer.singleShot(200, self.app.quit)
 
+    def receive_dji(self, readings, state):
+        if self.closing:
+            return
+        self.readings.update({r.key: r for r in readings})
+        self.update_presentation(self.last_error)
+        self.panel.dji_page.refresh()
+
     def update_presentation(self, error=""):
         self.last_error = error
         for key, card in self.panel.cards.items():
@@ -862,7 +1030,15 @@ class Controller(QObject):
         tooltip = [tr("电量岛 · ChargeDock")]
         low = False
         for r in self.readings.values():
-            tooltip.append(f"{tr(r.title)}: " + ((tr("约 ") if r.approximate else "") + f"{r.level}%" if r.level is not None else tr("未连接")))
+            if r.key in DJI_MODELS:
+                from dji_protocol import GAUGE_TEXT, STATE_TEXT
+                text = (GAUGE_TEXT.get(r.gauge, "电量未知") if r.state in ("online", "unknown", "stale")
+                        else STATE_TEXT.get(r.state, "电量未知"))
+                if r.state == "stale":
+                    text = tr("上次读取") + " · " + tr(text)
+                tooltip.append(f"{tr(r.title)}: {tr(text)}")
+            else:
+                tooltip.append(f"{tr(r.title)}: " + ((tr("约 ") if r.approximate else "") + f"{r.level}%" if r.level is not None else tr("未连接")))
             if r.key in ("mouse", "keyboard") and r.level is not None:
                 item = self.config["alerts"][r.key]
                 low |= item["enabled"] and r.level <= item["threshold"] and not r.charging
@@ -966,6 +1142,8 @@ class Controller(QObject):
         self.refresh_timer.stop()
         self.admin_timer.stop()
         self.poller.stop()
+        if self.dji:
+            self.dji.stop()
         self.tray.hide()
         self.panel.hide()
         self.server.close()

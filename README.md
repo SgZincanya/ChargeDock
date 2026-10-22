@@ -1,5 +1,9 @@
 # 电量岛 · ChargeDock
 
+> **DJI 开发分支**：已原生加入 DJI Mic Mini 2 双麦电量与部分设备控制。
+> 本机接收器不接受降噪开关/强度写入，显示为只读；免拔插外放未真机测试。
+> 安装、验证范围和限制见 [DJI.md](DJI.md)。原三类设备和配置继续兼容。
+
 一个安静的 Windows 外设电量工具。单个托盘图标，点击在右下角展开临时窗口。
 
 基于 [yszyszysz233/2.4G-battery-viewer](https://github.com/yszyszysz233/2.4G-battery-viewer) 的 Windows HID 底层开发；ROG 和耳机电量协议分别参考 G-Helper 与 HeadsetControl。具体代码来源、参考版本和许可证说明见 [ATTRIBUTION.md](ATTRIBUTION.md) 与 [LICENSING.md](LICENSING.md)。

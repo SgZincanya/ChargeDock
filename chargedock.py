@@ -11,6 +11,7 @@ from pathlib import Path
 def arguments():
     parser = argparse.ArgumentParser(description="电量岛 · ChargeDock")
     parser.add_argument("--background", action="store_true")
+    parser.add_argument("--dji-worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--quit", action="store_true")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--poll-output", type=Path)
@@ -28,6 +29,11 @@ def arguments():
 
 def main():
     args = arguments()
+    if args.dji_worker:
+        if args.data_dir is None:
+            return 2
+        from dji_worker import run
+        return run(args.data_dir)
     if args.asus_action:
         if args.result is None:
             return 2

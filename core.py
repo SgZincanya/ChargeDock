@@ -18,6 +18,11 @@ class Reading:
     approximate: bool = False
     error: str = ""
     updated: float = 0
+    battery_kind: str = "percent"
+    gauge: int | None = None
+    state: str = ""
+    detail: str = ""
+    protocol: int | None = None
 
 
 MODELS = {
@@ -25,6 +30,9 @@ MODELS = {
     "keyboard": ("夜魔", "ROG AZOTH"),
     "headset": ("赛睿耳机", "ARCTIS NOVA PRO WIRELESS"),
 }
+DJI_MODELS = {"mic1": ("麦克风 1", "DJI Mic Mini 2"),
+              "mic2": ("麦克风 2", "DJI Mic Mini 2")}
+ALL_MODELS = {**MODELS, **DJI_MODELS}
 
 
 def atomic_json(path: Path, value) -> None:
@@ -172,6 +180,38 @@ def read_all(keys=None) -> list[Reading]:
     return result
 
 
+def validate_readings(raw, expected_keys):
+    if not isinstance(raw, list) or len(raw) != len(expected_keys):
+        raise ValueError("Incomplete device results")
+    readings = [Reading(**item) for item in raw]
+    if [r.key for r in readings] != list(expected_keys):
+        raise ValueError("Unexpected devices")
+    for r in readings:
+        if type(r.charging) is not bool or type(r.approximate) is not bool:
+            raise ValueError("Invalid flags")
+        if type(r.updated) not in (int, float) or not 0 <= r.updated < 1e12:
+            raise ValueError("Invalid timestamp")
+        if not all(isinstance(v, str) and len(v) <= 2048 for v in (r.title, r.model, r.error, r.detail, r.state)):
+            raise ValueError("Invalid text")
+        if r.battery_kind not in ("percent", "gauge"):
+            raise ValueError("Invalid battery kind")
+        if r.battery_kind == "gauge":
+            from dji_protocol import STATE_TEXT
+            if r.key not in DJI_MODELS or r.level is not None or r.approximate:
+                raise ValueError("Gauge is not a percentage")
+            if r.gauge is not None and (type(r.gauge) is not int or r.gauge not in range(1, 8)):
+                raise ValueError("Invalid gauge")
+            if r.state not in STATE_TEXT or (r.protocol is not None and (type(r.protocol) is not int or r.protocol not in (1, 2))):
+                raise ValueError("Invalid DJI state")
+            if r.protocol != 2 and r.gauge is not None:
+                raise ValueError("Unsupported gauge protocol")
+        elif r.key in DJI_MODELS or r.gauge is not None:
+            raise ValueError("Invalid percentage device")
+        if r.level is not None and (type(r.level) is not int or not 0 <= r.level <= 100):
+            raise ValueError("Invalid battery level")
+    return readings
+
+
 def poll_to_file(path: Path, key=None) -> int:
     keys = [key] if isinstance(key, str) else key
     atomic_json(path, [asdict(r) for r in read_all(keys)])
@@ -181,15 +221,7 @@ def poll_to_file(path: Path, key=None) -> int:
 def read_poll_file(path: Path, expected_keys=None) -> list[Reading]:
     expected_keys = list(MODELS) if expected_keys is None else expected_keys
     raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list) or len(raw) != len(expected_keys):
-        raise ValueError("Incomplete device results")
-    readings = [Reading(**item) for item in raw]
-    if [r.key for r in readings] != expected_keys:
-        raise ValueError("Unexpected devices")
-    for reading in readings:
-        if reading.level is not None and (type(reading.level) is not int or not 0 <= reading.level <= 100):
-            raise ValueError("Invalid battery level")
-    return readings
+    return validate_readings(raw, expected_keys)
 
 
 def user_data_dir() -> Path:

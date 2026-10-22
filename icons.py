@@ -7,6 +7,7 @@ from PySide6.QtSvg import QSvgRenderer
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 PATHS = {
+    "microphone": '<rect x="11" y="3" width="10" height="17" rx="5"/><path d="M7 15v2a9 9 0 0 0 18 0v-2M16 26v4M11 30h10"/>',
     "chevrons": '<path d="m11 12 5-5 5 5m-10 8 5 5 5-5"/>',
     "mouse": '<rect x="7" y="3" width="18" height="26" rx="9"/><path d="M16 4v8M8 13h16"/>',
     "keyboard": '<rect x="2" y="7" width="28" height="19" rx="4"/><path d="M7 12h1m4 0h1m4 0h1m4 0h1M7 17h1m4 0h1m4 0h1m4 0h1M10 22h12"/>',
