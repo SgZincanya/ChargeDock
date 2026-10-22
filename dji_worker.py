@@ -12,6 +12,7 @@ from pathlib import Path
 from core import atomic_json
 from dji_protocol import Status, Stream, readings
 from dji_control import ControlError, Transaction, validate_request, build_command
+from file_io import read_json_shared
 
 
 def run(folder, connection_factory=None, clock=time.monotonic, sleep=time.sleep):
@@ -50,7 +51,7 @@ def run(folder, connection_factory=None, clock=time.monotonic, sleep=time.sleep)
             command_file = folder / "command.json"
             try:
                 if command_file.exists() and command_file.stat().st_size <= 4096:
-                    request = validate_request(json.loads(command_file.read_text(encoding="utf-8")))
+                    request = validate_request(read_json_shared(command_file, 4096))
                     if request["id"] != last_command:
                         last_command = request["id"]
                         if pending:
@@ -116,9 +117,24 @@ def run(folder, connection_factory=None, clock=time.monotonic, sleep=time.sleep)
                     "settings": status.settings, "tx": status.tx,
                     "protocol": status.version, "rejected": stream.rejected,
                     "receiver_product": status.receiver_product,
-                    "command_result": result, "unavailable_settings": sorted(unavailable)})
+                    "command_result": result, "unavailable_settings": sorted(unavailable)}, replace_attempts=5)
                 last_emit = now
     finally:
         if connection:
             connection.close()
     return 0
+
+
+def run_managed(folder):
+    """An owned worker must exit to its supervisor, never a bootloader dialog."""
+    try:
+        return run(folder)
+    except Exception as exc:
+        try:
+            atomic_json(Path(folder) / "failure.json", {
+                "state": "storage_failed" if isinstance(exc, OSError) else "read_failed",
+                "detail": f"{type(exc).__name__}: {exc}"[:2048],
+                "time": time.time()}, replace_attempts=3)
+        except (OSError, ValueError, TypeError):
+            pass
+        return 1

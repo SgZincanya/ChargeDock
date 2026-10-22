@@ -166,5 +166,6 @@
   "此接收器的降噪写入受固件限制，仅显示设备回报状态。": "This receiver limits noise cancellation writes. Reported state is shown read-only.",
   "继续": "Continue",
   "取消": "Cancel",
-  "降噪 USB 指令被设备拒绝；可双击麦克风电源键切换降噪。": "The device rejects USB noise cancellation commands. Double-press the microphone power button to toggle it."
+  "降噪 USB 指令被设备拒绝；可双击麦克风电源键切换降噪。": "The device rejects USB noise cancellation commands. Double-press the microphone power button to toggle it.",
+  "通信临时文件不可用，正在重试": "Communication files unavailable; retrying"
 }

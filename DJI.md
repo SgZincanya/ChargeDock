@@ -88,9 +88,34 @@ v1 使用独立槽结构，仅解析连接状态，电量明确显示不支持�
 
 ## 验证记录
 
+### 状态文件占用热修复
+
+`v0.1.0-dji.1` 在 `state.json.tmp → state.json` 替换遇到 Windows 文件共享冲突时，
+可能抛出未处理的 `WinError 5`，出现 PyInstaller 后台进程异常对话框。
+这不是电量协议回复，也不能仅凭这个错误认定用户账号权限不足。
+
+本次修复增加：
+
+- `file_io.py` 使用允许读、写、删除共享的读取句柄，对已有目标使用 Windows
+  `ReplaceFileW`；第一次发布使用同目录原子重命名。原始设置文件 ACL 不被重置。
+- 临时文件使用唯一名称。后台替换最多尝试 5 次，等待总计最多 300 ms；
+  失败时保留完整旧文件。UI 配置写入默认不等待，避免阻塞界面。
+- 高频替换期间的短暂“文件不存在／共享冲突”读取交给下一轮读取恢复，不解析半份 JSON。
+- 后台受管理入口将持续失败写成有界诊断并返回退出码，主程序显示“通信临时文件不可用，正在重试”，
+  5 秒后重试，不再让这类异常弹出 bootloader 崩溃窗口。
+- 启动、租约、刷新和退出清理也容忍文件占用；清理只涉及本次会话的已知文件。
+
+已用实际 Windows 文件锁测试：允许共享读取时仍可替换；独占读取释放后写入恢复；
+持续占用有界失败且旧 JSON 完整。打包工作进程被故意锁住时约 1.25 秒报告失败并退出，
+解锁后自动重启并再次收到有效 v2 状态。另完成 500 次并发写入压力测试；
+期间短暂读取冲突被跳过，最终快照完整，没有未处理的写入错误。
+
+API 依据 Microsoft 的 [ReplaceFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew)
+与 [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) 文档。
+
 2026-10-22 使用独立 `--data-dir`：
 
-101 项自动化测试通过（含原 69 项回归）；源码界面和 Windows EXE 均完成实际读取及
+110 项自动化测试通过（含原 69 项回归）；源码界面和 Windows EXE 均完成实际读取及
 TX2 音色往返确认。机器路径已从公开测试记录中移除，见 [验证记录](docs/dji-validation.json)。
 
 ![双麦电量](docs/preview-dji.png)

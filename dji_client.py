@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 from core import DJI_MODELS, validate_readings, atomic_json
 from dji_protocol import Status, readings
+from file_io import read_json_shared
 
 
 class DjiClient(QObject):
@@ -17,7 +18,6 @@ class DjiClient(QObject):
     def __init__(self, data_dir):
         super().__init__()
         self.folder = Path(data_dir) / ("dji-" + uuid.uuid4().hex)
-        self.folder.mkdir(parents=True)
         self.process = QProcess(self)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -30,20 +30,49 @@ class DjiClient(QObject):
         self.pending_id = None
         self.last_lease = 0
         self.last_presentation = None
+        self.last_io_error = ""
+
+    def notify_failure(self, state, detail):
+        from dataclasses import asdict
+        values = readings(Status(), state, detail)
+        self.state = {"protocol": None, "settings": {}, "tx": {},
+                      "readings": [asdict(r) for r in values]}
+        self.updated.emit(values, self.state)
+
+    def worker_failure(self):
+        try:
+            error = read_json_shared(self.folder / "failure.json", 4096)
+            if (isinstance(error, dict) and error.get("state") in ("storage_failed", "read_failed")
+                    and isinstance(error.get("detail"), str)):
+                self.notify_failure(error["state"], error["detail"][:2048])
+                return
+        except (OSError, ValueError, TypeError):
+            pass
+        self.notify_failure("storage_failed" if self.last_io_error else "read_failed",
+                            self.last_io_error or "worker exited")
 
     def start(self):
         # Never replay a command after a crash or restart.
-        (self.folder / "command.json").unlink(missing_ok=True)
         self.pending_id = None
         self.last_presentation = None
-        (self.folder / "lease").touch()
+        self.last_io_error = ""
+        self.timer.start(250)
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            for name in ("command.json", "failure.json"):
+                (self.folder / name).unlink(missing_ok=True)
+            (self.folder / "lease").touch()
+        except OSError as exc:
+            self.last_io_error = str(exc)
+            self.notify_failure("storage_failed", self.last_io_error)
+            self.retry_at = time.time() + 5
+            return
         args = ["--dji-worker", "--data-dir", str(self.folder)]
         if not getattr(sys, "frozen", False):
             args.insert(0, str(Path(__file__).with_name("chargedock.py")))
         self.process.start(sys.executable, args)
         self.started = time.time()
         self.last_heartbeat = self.started
-        self.timer.start(250)
 
     def tick(self):
         if self.stopping:
@@ -53,25 +82,22 @@ class DjiClient(QObject):
             try:
                 (self.folder / "lease").touch()
                 self.last_lease = now
-            except OSError:
+            except OSError as exc:
+                self.last_io_error = str(exc)
                 self.process.kill()
         if self.process.state() == QProcess.ProcessState.NotRunning:
             if not self.retry_at:
                 self.pending_id = None
-                self.state = {}
-                self.updated.emit(readings(Status(), "read_failed", "worker exited"), {})
+                self.worker_failure()
                 self.retry_at = now + 5
             if now >= self.retry_at:
                 self.retry_at = 0
                 self.start()
             return
         try:
-            path = self.folder / "state.json"
-            if path.stat().st_size > 65536:
-                raise ValueError("Oversized DJI message")
-            raw = path.read_text(encoding="utf-8")
+            state = read_json_shared(self.folder / "state.json")
+            raw = json.dumps(state, ensure_ascii=False, sort_keys=True)
             if raw != self.last_raw:
-                state = json.loads(raw)
                 values = validate_readings(state["readings"], DJI_MODELS)
                 from dji_control import status_from_message
                 status_from_message(state)
@@ -79,6 +105,7 @@ class DjiClient(QObject):
                 if type(heartbeat) not in (int, float) or not self.started - 1 <= heartbeat <= now + 1:
                     raise ValueError("Invalid heartbeat")
                 self.last_raw, self.last_heartbeat, self.state = raw, heartbeat, state
+                self.last_io_error = ""
                 result = state.get("command_result") or {}
                 if result.get("id") == self.pending_id and result.get("code") not in ("pending", "rebooting"):
                     self.pending_id = None
@@ -89,10 +116,14 @@ class DjiClient(QObject):
                 if signature != self.last_presentation:
                     self.last_presentation = signature
                     self.updated.emit(values, state)
-        except (OSError, ValueError, TypeError, KeyError):
+        except OSError as exc:
+            if not isinstance(exc, FileNotFoundError):
+                self.last_io_error = str(exc)
+        except (ValueError, TypeError, KeyError):
             pass
         if now - self.last_heartbeat > 6:
-            self.updated.emit(readings(Status(), "stale", "worker timeout"), {})
+            self.notify_failure("storage_failed" if self.last_io_error else "stale",
+                                self.last_io_error or "worker timeout")
             self.process.kill()
 
     def submit(self, setting, value, unit=None, reboot_confirmed=False):
@@ -105,19 +136,29 @@ class DjiClient(QObject):
         return True
 
     def refresh(self):
-        (self.folder / "refresh").touch()
+        try:
+            (self.folder / "refresh").touch()
+        except OSError as exc:
+            self.last_io_error = str(exc)
+            self.notify_failure("storage_failed", self.last_io_error)
 
     def stop(self):
         self.stopping = True
         self.timer.stop()
-        (self.folder / "stop").touch()
+        try:
+            (self.folder / "stop").touch()
+        except OSError:
+            pass
         if self.process.state() != QProcess.ProcessState.NotRunning:
             if not self.process.waitForFinished(700):
                 self.process.kill()
                 self.process.waitForFinished(1000)
         # Exact known mailbox files only. Never recursively remove a data dir.
-        for name in ("state.json", "state.json.tmp", "command.json", "command.json.tmp", "lease", "stop", "refresh"):
-            (self.folder / name).unlink(missing_ok=True)
+        for name in ("state.json", "state.json.tmp", "command.json", "command.json.tmp", "failure.json", "lease", "stop", "refresh"):
+            try:
+                (self.folder / name).unlink(missing_ok=True)
+            except OSError:
+                pass
         try:
             self.folder.rmdir()
         except OSError:

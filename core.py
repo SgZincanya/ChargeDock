@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from file_io import replace_file
 
 
 @dataclass
@@ -35,11 +37,29 @@ DJI_MODELS = {"mic1": ("麦克风 1", "DJI Mic Mini 2"),
 ALL_MODELS = {**MODELS, **DJI_MODELS}
 
 
-def atomic_json(path: Path, value) -> None:
+def atomic_json(path: Path, value, *, replace_attempts=1) -> None:
+    if type(replace_attempts) is not int or not 1 <= replace_attempts <= 8:
+        raise ValueError("Invalid replace attempt limit")
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        for attempt in range(replace_attempts):
+            try:
+                replace_file(temporary, path)
+                return
+            except OSError as exc:
+                transient = (getattr(exc, "winerror", None) in (5, 32, 33)
+                             or isinstance(exc, PermissionError))
+                if not transient or attempt + 1 == replace_attempts:
+                    raise
+                # Only worker callers opt in; UI writes remain fail-fast.
+                time.sleep(min(0.02 * 2 ** attempt, 0.16))
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass  # third-party locks must not hide the original failure
 
 
 def defaults() -> dict:

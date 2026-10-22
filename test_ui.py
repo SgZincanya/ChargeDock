@@ -131,6 +131,34 @@ class UiTests(unittest.TestCase):
         finally:
             client.stop()
 
+    def test_dji_session_permission_failure_is_reported_and_retryable(self):
+        from dji_client import DjiClient
+        client=DjiClient(Path(self.folder.name))
+        received=[];client.updated.connect(lambda values,state:received.append(values))
+        try:
+            with patch.object(Path,'mkdir',side_effect=PermissionError('denied')), \
+                 patch.object(client.process,'start') as start:
+                client.start()
+            start.assert_not_called()
+            self.assertEqual(received[-1][0].state,'storage_failed')
+            self.assertGreater(client.retry_at,0)
+        finally:
+            client.stop()
+
+    def test_dji_supervisor_reads_failure_report_and_cleanup_tolerates_locks(self):
+        from dji_client import DjiClient
+        from core import atomic_json
+        client=DjiClient(Path(self.folder.name))
+        received=[];client.updated.connect(lambda values,state:received.append(values))
+        atomic_json(client.folder/'failure.json',{'state':'storage_failed','detail':'locked'})
+        client.tick()
+        self.assertEqual(received[-1][0].state,'storage_failed')
+        self.assertEqual(received[-1][0].detail,'locked')
+        with patch.object(Path,'touch',side_effect=PermissionError('locked')), \
+             patch.object(Path,'unlink',side_effect=PermissionError('locked')):
+            client.stop()
+        self.assertFalse(client.timer.isActive())
+
     def test_dji_stale_and_rejected_controls_disabled(self):
         client=self.dji_fixture()
         client.state['unavailable_settings']=['noise-cancel']

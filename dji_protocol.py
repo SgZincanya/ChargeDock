@@ -80,6 +80,7 @@ STATE_TEXT = {
     "no_frames": "未收到有效状态报文", "read_failed": "大疆读取失败", "offline": "发射器离线",
     "unsupported": "v1 电量读取暂不支持", "unknown": "电量未知", "online": "已连接",
     "stale": "上次读取", "connecting": "正在连接设备…",
+    "storage_failed": "通信临时文件不可用，正在重试",
 }
 
 

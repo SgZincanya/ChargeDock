@@ -32,8 +32,8 @@ def main():
     if args.dji_worker:
         if args.data_dir is None:
             return 2
-        from dji_worker import run
-        return run(args.data_dir)
+        from dji_worker import run_managed
+        return run_managed(args.data_dir)
     if args.asus_action:
         if args.result is None:
             return 2

@@ -1,6 +1,6 @@
 {
   "date": "2026-10-22",
-  "unit_tests_passed": 101,
+  "unit_tests_passed": 110,
   "original_regression_tests": 69,
   "references": {
     "DJI-Mic-Control": "9ba76880807a71d4eaba74c785dbee186a98f43b",
@@ -157,34 +157,43 @@
     "crc_rejected": 0
   },
   "frozen": {
-    "tests": [
-      "Packaged GUI + WinUSB worker + current transmitter states",
-      "TX2 command ACK + reported state",
-      "Original tones and all settings restored"
+    "protocol": 2,
+    "readings": [
+      {
+        "key": "mic1",
+        "title": "麦克风 1",
+        "model": "DJI Mic Mini 2",
+        "level": null,
+        "charging": false,
+        "approximate": false,
+        "error": "",
+        "updated": 1792677404.781039,
+        "battery_kind": "gauge",
+        "gauge": null,
+        "state": "offline",
+        "detail": "",
+        "protocol": 2
+      },
+      {
+        "key": "mic2",
+        "title": "麦克风 2",
+        "model": "DJI Mic Mini 2",
+        "level": null,
+        "charging": false,
+        "approximate": false,
+        "error": "",
+        "updated": 1792677404.781039,
+        "battery_kind": "gauge",
+        "gauge": null,
+        "state": "offline",
+        "detail": "",
+        "protocol": 2
+      }
     ],
-    "original_tones": {
-      "2": "standard"
-    },
-    "original_settings": {
-      "noise-cancel": "basic",
-      "noise-cancel-power": false,
-      "camera-power": false,
-      "auto-off-15m": true,
-      "stereo": "mono",
-      "plug-free": false,
-      "clip-limiter": true,
-      "safety-track": false,
-      "mic-leds": true,
-      "tx-auto-off-15m": true,
-      "noise-cancel-button": true,
-      "low-cut": false
-    },
-    "restored": true,
     "crc_rejected": 0,
     "exit_code": 0,
     "real_config_unchanged": true,
-    "installed_exe_unchanged": true,
-    "exe_sha256": "9b77e569401a36aaf6b71c0da68c2ac8959a0f73dced3b97b86a27e28a124e3a"
+    "exe_sha256": "81a2f615220d7509accc831b5f1660937f9657ff8ac4ae6c7b08293d1684b4ee"
   },
   "limitations": [
     "Mic Mini 2 receiver rejects NC 0x37/0x38 with ACK 0xFF; shown read-only",
@@ -311,6 +320,29 @@
       "idle_window_resizes": 0,
       "crc_rejected": 0
     }
+  },
+  "file_lock_hotfix": {
+    "stress_writes": 500,
+    "stress_errors": [],
+    "transient_read_conflicts": 2759,
+    "worker_states": [
+      "offline",
+      "storage_failed",
+      "no_frames",
+      "offline"
+    ],
+    "worker_exit_codes": [
+      1,
+      0
+    ],
+    "failure_reported_seconds": 1.25,
+    "failure": {
+      "state": "storage_failed",
+      "detail": "PermissionError: Windows sharing lock (test path omitted)",
+      "time": 1792677395.8911579
+    },
+    "recovered_after_unlock": true,
+    "last_state": "offline"
   },
   "simulation_only": [
     "all gauge values",
