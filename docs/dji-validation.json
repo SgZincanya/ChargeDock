@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-22",
-  "unit_tests_passed": 110,
+  "date": "2026-10-24",
+  "unit_tests_passed": 113,
   "original_regression_tests": 69,
   "references": {
     "DJI-Mic-Control": "9ba76880807a71d4eaba74c785dbee186a98f43b",
@@ -353,5 +353,16 @@
     "reconnect",
     "timeouts",
     "reboot confirmation"
-  ]
+  ],
+  "initial_dji_validation_date": "2026-10-22",
+  "threshold_update": {
+    "date": "2026-10-24",
+    "unit_tests_passed": 113,
+    "packaged_threshold_callback_matches_tested_source": true,
+    "isolated_exe_exit_code": 0,
+    "single_tray_icon": true,
+    "tool_window": true,
+    "real_config_unchanged": true,
+    "exe_sha256": "646782ff3ff80d61883acf8891846d65925ffb05b026c7dea42d06ab48fdf466"
+  }
 }

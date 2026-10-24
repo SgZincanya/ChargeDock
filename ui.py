@@ -1075,6 +1075,9 @@ class Controller(QObject):
             self.panel.settings_status.setText("设置无法保存，请检查目录权限")
 
     def alert_setting(self, key, name, value):
+        previous = self.config["alerts"][key][name]
+        if name == "threshold" and value != previous:
+            self.policy.notified.discard(key)
         self.config["alerts"][key][name] = value
         self.save()
         for k, card in self.panel.cards.items():

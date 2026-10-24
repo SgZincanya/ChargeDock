@@ -240,6 +240,39 @@ class UiTests(unittest.TestCase):
         self.assertFalse(saved["alerts"]["keyboard"]["enabled"])
         self.assertFalse(self.panel.thresholds["keyboard"].isEnabled())
 
+    def test_changing_threshold_rearms_and_notifies_once_on_next_valid_reading(self):
+        self.controller.args.snapshot=None
+        with patch.object(self.controller,'schedule_next'), patch.object(self.controller.tray,'showMessage') as notify:
+            self.panel.thresholds['mouse'].setValue(40)
+            self.controller.receive([Reading('mouse','鼠标','',40)],'')
+            self.assertEqual(notify.call_count,1)
+            self.panel.thresholds['mouse'].setValue(20)
+            self.assertNotIn('mouse',self.controller.policy.notified)
+            self.controller.receive([Reading('mouse','鼠标','',None,error='offline')],'')
+            self.assertEqual(notify.call_count,1)
+            self.controller.receive([Reading('mouse','鼠标','',20)],'')
+            self.assertEqual(notify.call_count,2)
+            self.assertIn('20%',notify.call_args.args[1])
+            self.controller.receive([Reading('mouse','鼠标','',19)],'')
+            self.assertEqual(notify.call_count,2)
+
+    def test_threshold_change_only_rearms_that_device_and_preserves_snooze(self):
+        policy=self.controller.policy
+        self.assertEqual(len(policy.evaluate([Reading('mouse','','',20),Reading('keyboard','','',20)],self.controller.config)),2)
+        policy.snoozed_until=1e12
+        self.panel.thresholds['mouse'].setValue(40)
+        self.assertEqual(policy.notified,{'keyboard'})
+        self.assertEqual(policy.snoozed_until,1e12)
+        self.assertEqual(policy.evaluate([Reading('mouse','','',20)],self.controller.config,now=100),[])
+        self.assertEqual(len(policy.evaluate([Reading('mouse','','',20)],self.controller.config,now=1e12+1)),1)
+
+    def test_same_threshold_value_does_not_reset_notification(self):
+        policy=self.controller.policy
+        policy.evaluate([Reading('mouse','','',20)],self.controller.config)
+        self.controller.alert_setting('mouse','threshold',20)
+        self.assertEqual(policy.notified,{'mouse'})
+        self.assertEqual(policy.evaluate([Reading('mouse','','',20)],self.controller.config),[])
+
     def test_threshold_editor_has_room_for_visible_text(self):
         self.panel.show_settings()
         self.panel.show()
